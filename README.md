@@ -39,8 +39,16 @@ See [docs/dmod-boot.md](docs/dmod-boot.md).
 ## The page
 
 [assets](assets) is the design: `car_hmi.html`, the fonts it uses
-(Inter, Phosphor Icons - `assets/fonts`) and the cover images
-(`assets/images`), all next to it, so it also opens in a browser.
+(Inter, Phosphor Icons - `assets/fonts`) and the cover every track is shown
+with for now (`assets/images/cover-default.png`; the tracks' own covers, from
+their ID3 tags, are to come - this one stays for the tracks without one), all
+next to it, so it also opens in a browser. The PNG is drawn from
+`cover-default.svg`:
+
+```bash
+google-chrome --headless=new --hide-scrollbars --window-size=512,512 \
+    --screenshot=assets/images/cover-default.png assets/images/cover-default.svg
+```
 [docs/view.md](docs/view.md) describes how it becomes a view.
 
 ## Building
@@ -61,7 +69,7 @@ carhmi-demo/
 ├── assets/
 │   ├── car_hmi.html        # the design
 │   ├── fonts/              # Inter, Phosphor Icons (+ their licenses)
-│   └── images/             # cover images
+│   └── images/             # the default cover: cover-default.png, rendered from cover-default.svg
 ├── cmake/carhmi_page.cmake # page -> the view's sources (todmvs)
 ├── configs/carhmi.ini      # the service unit
 ├── dmod-boot/              # flash.dmd and sdcard.dmd to add to dmod-boot
