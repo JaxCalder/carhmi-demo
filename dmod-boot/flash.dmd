@@ -1,0 +1,23 @@
+#
+# carhmi - the car HMI demo, as a service of dmod-boot (flash modules).
+#
+# Add to the firmware with
+#   -DDMBOOT_EXTRA_FLASH_DMD_FILES=<carhmi-demo>/dmod-boot/flash.dmd
+# and the view (too big for the flash) to the SD card with
+#   -DDMBOOT_EXTRA_SDCARD_DMD_FILES=<carhmi-demo>/dmod-boot/sdcard.dmd
+# See docs/dmod-boot.md.
+#
+
+# The display service: dmdevfs reports the display, dmview.rules starts a
+# dmview@<name> for it, which shows what the applications claim for it
+dmview
+dmview service=dmview@.ini
+dmview rules=dmview.rules
+
+# The application: claims the display for the car HMI's view while it runs
+carhmi service=carhmi.ini
+
+# The player's audio: dmaudio.rules starts a dmaudio@<name> for every audio
+# device dmdevfs reports (e.g. the board's codec); carhmi plays through it
+dmaudio service=dmaudio@.ini
+dmaudio rules=dmaudio.rules

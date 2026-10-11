@@ -1,35 +1,244 @@
 #include "dmod.h"
+#include "dmosi.h"
+#include "libdmview.h"
+#include "libsystemd.h"
+#include "player.h"
+#include <errno.h>
+#include <string.h>
 
 /**
- * @brief Pre-initialization function for the module.
- * 
- * @note This function is optional. You can remove it if you don't need it.
- * 
- * This function is called when the module enabling is in progress.
- * 
- * You can use this function to load the required dependencies, such as 
- * other modules. Please be aware that the module is not fully initialized, 
- * so not all the API functions are available - you can check if the API
- * is connected by calling the Dmod_IsFunctionConnected() function.
+ * @brief carhmi - the car HMI demo: shows its view on a display while it runs,
+ *        and plays the MP3 files of the SD card in it.
+ *
+ * Usage: carhmi [<view>] [<display>] [<music directory>]
+ *
+ * The view (assets/car_hmi.html, converted at build time) is a program of
+ * its own: its pages, the climate controls, the animations and the touches
+ * run in libdmview. carhmi claims the display for it (libdmview_claim()) and
+ * talks to it through the claim: it sets what the player is at - the view's
+ * properties track, playing, position, duration, progress, title, artist,
+ * count and rowN.title / .artist / .time -, and takes what was clicked - the
+ * events toggle, next, prev and select (a row). The player (player.c) plays
+ * the files of <music directory>: by default `music` of the card the view is
+ * on (/mnt/<card>/music), else of the first card that has one.
+ *
+ * It is started as a service (configs/carhmi.ini). The services start
+ * together, so the view - on a card, mounted after this starts - and the
+ * display are waited for.
  */
-void dmod_preinit(void)
+
+#define DEFAULT_VIEW    "/eviews/carhmi_view/carhmi.dmv"   /* dmod-boot: views of the flash modules */
+#define WAIT_MS         100u
+#define DISPLAY_WAIT_MS 10000u
+#define VIEW_WAIT_MS    30000u
+#define EVENT_WAIT_MS   250u
+#define ROWS            10u             /* Of the view's queue */
+
+/* `music` of the card the view is on, else of the first card in /mnt with one */
+static void music_dir(const char* view, char* dir, size_t size)
 {
-    if(Dmod_IsFunctionConnected( Dmod_Printf ))
+    dir[0] = '\0';
+    if (strncmp(view, "/mnt/", 5) == 0)
     {
-        Dmod_Printf("API is connected!\n");
+        const char* end = strchr(view + 5, '/');
+        if (end != NULL)
+        {
+            Dmod_SnPrintf(dir, size, "%.*s/music", (int)(end - view), view);
+            void* d = Dmod_OpenDir(dir);
+            if (d != NULL)
+            {
+                Dmod_CloseDir(d);
+                return;
+            }
+        }
     }
+    void* mnt = Dmod_OpenDir("/mnt");
+    const char* name;
+    while (mnt != NULL && (name = Dmod_ReadDir(mnt)) != NULL)
+    {
+        Dmod_SnPrintf(dir, size, "/mnt/%s/music", name);
+        void* d = Dmod_OpenDir(dir);
+        if (d != NULL)
+        {
+            Dmod_CloseDir(d);
+            Dmod_CloseDir(mnt);
+            return;
+        }
+    }
+    if (mnt != NULL)
+        Dmod_CloseDir(mnt);
+    Dmod_SnPrintf(dir, size, "/mnt/music");
 }
 
-/**
- * @brief Main function of the application
- * 
- * @param argc Number of arguments
- * @param argv Array of arguments
- * 
- * @return 0 if success, error code otherwise
- */
-int main(int argc, char *argv[])
+static void format_time(char* out, size_t size, uint32_t seconds)
 {
-    Dmod_Printf("Hello, World!\n");
-    return 0;
+    Dmod_SnPrintf(out, size, "%u:%02u", (unsigned)(seconds / 60u), (unsigned)(seconds % 60u));
+}
+
+/* The queue's rows: the ROWS tracks of the page the current one is on */
+static uint32_t show_rows(uint32_t claim, player_t p, int32_t current)
+{
+    uint32_t first = (current > 0) ? ((uint32_t)current / ROWS) * ROWS : 0u;
+    uint32_t count = 0;
+    for (uint32_t i = 0; i < ROWS; i++)
+    {
+        char name[24], time[16] = "";
+        const player_track_t* t = player_track(p, first + i);
+        if (t != NULL)
+        {
+            format_time(time, sizeof(time), t->duration_ms / 1000u);
+            count++;
+        }
+        Dmod_SnPrintf(name, sizeof(name), "row%u.title", (unsigned)i);
+        (void)libdmview_prop_set_string(claim, name, (t != NULL) ? t->title : "");
+        Dmod_SnPrintf(name, sizeof(name), "row%u.artist", (unsigned)i);
+        (void)libdmview_prop_set_string(claim, name, (t != NULL) ? t->artist : "");
+        Dmod_SnPrintf(name, sizeof(name), "row%u.time", (unsigned)i);
+        (void)libdmview_prop_set_string(claim, name, time);
+    }
+    (void)libdmview_prop_set_int(claim, "count", (int32_t)count);
+    return first;
+}
+
+/* What the player is at, into the view: the track when it changed, the time every second */
+typedef struct
+{
+    uint32_t    changes;
+    int32_t     track;
+    uint32_t    first;          /* Of the rows shown */
+    uint32_t    second;
+    uint32_t    duration;
+    bool        playing;
+    bool        shown;
+} shown_t;
+
+static void show(uint32_t claim, player_t p, shown_t* v)
+{
+    player_state_t st;
+    player_state(p, &st);
+    if (!v->shown || st.changes != v->changes)
+    {
+        const player_track_t* t = (st.track >= 0) ? player_track(p, (uint32_t)st.track) : NULL;
+        if (!v->shown || st.track != v->track)
+        {
+            uint32_t first = (st.track >= 0) ? ((uint32_t)st.track / ROWS) * ROWS : 0u;
+            if (!v->shown || first != v->first)
+                v->first = show_rows(claim, p, st.track);
+            (void)libdmview_prop_set_string(claim, "title", (t != NULL) ? t->title :
+                                            (player_count(p) == 0) ? "Brak plik\xC3\xB3w MP3" : "");
+            (void)libdmview_prop_set_string(claim, "artist", (t != NULL) ? t->artist : "");
+            (void)libdmview_prop_set_int(claim, "track", (st.track >= 0) ? st.track - (int32_t)v->first : 0);
+        }
+        if (!v->shown || st.playing != v->playing)
+            (void)libdmview_prop_set_int(claim, "playing", st.playing ? 1 : 0);
+        v->changes = st.changes;
+        v->track = st.track;
+        v->playing = st.playing;
+    }
+    uint32_t second = st.position_ms / 1000u, duration = st.duration_ms / 1000u;
+    if (!v->shown || second != v->second || duration != v->duration)
+    {
+        (void)libdmview_prop_set_int(claim, "position", (int32_t)second);
+        (void)libdmview_prop_set_int(claim, "duration", (int32_t)duration);
+        (void)libdmview_prop_set_int(claim, "progress",
+                                     (st.duration_ms > 0) ? (int32_t)((uint64_t)st.position_ms * 1000u / st.duration_ms) : 0);
+        v->second = second;
+        v->duration = duration;
+    }
+    v->shown = true;
+}
+
+/* What was clicked */
+static void handle(player_t p, const libdmview_event_t* ev, const shown_t* v)
+{
+    if (strcmp(ev->name, "toggle") == 0)
+        player_toggle(p);
+    else if (strcmp(ev->name, "next") == 0)
+        player_next(p, 1);
+    else if (strcmp(ev->name, "prev") == 0)
+        player_next(p, -1);
+    else if (strcmp(ev->name, "select") == 0 && ev->value >= 0)
+        player_play(p, v->first + (uint32_t)ev->value);
+}
+
+int main(int argc, char* argv[])
+{
+    const char* view = (argc > 1 && argv[1][0] != '\0') ? argv[1] : DEFAULT_VIEW;
+    const char* display = (argc > 2 && argv[2][0] != '\0') ? argv[2] : NULL;
+
+    dmosi_semaphore_t wakeup = dmosi_semaphore_create(0, 1);
+    if (wakeup == NULL)
+        return -ENOMEM;
+    libsystemd_set_stop_semaphore(wakeup);
+
+    int ret = -ENOENT;
+    for (uint32_t waited = 0; !libsystemd_stop_requested(); waited += WAIT_MS)
+    {
+        if (Dmod_FileAvailable(view))
+        {
+            ret = 0;
+            break;
+        }
+        if (waited >= VIEW_WAIT_MS)
+        {
+            DMOD_LOG_ERROR("carhmi: no view %s\n", view);
+            Dmod_Printf("Usage: carhmi [<view>] [<display>] [<music directory>]\n");
+            break;
+        }
+        (void)dmosi_semaphore_wait(wakeup, 1, (int32_t)WAIT_MS);
+    }
+
+    uint32_t claim = 0;
+    if (ret == 0)
+    {
+        ret = -ENODEV;
+        for (uint32_t waited = 0; !libsystemd_stop_requested(); waited += WAIT_MS)
+        {
+            ret = libdmview_claim(display, view, &claim);
+            if (ret != -ENODEV || waited >= DISPLAY_WAIT_MS)
+                break;
+            (void)dmosi_semaphore_wait(wakeup, 1, (int32_t)WAIT_MS);
+        }
+        if (ret == 0)
+        {
+            char dir[128];
+            if (argc > 3 && argv[3][0] != '\0')
+                Dmod_SnPrintf(dir, sizeof(dir), "%s", argv[3]);
+            else
+                music_dir(view, dir, sizeof(dir));
+            player_t p = player_new(dir);
+            DMOD_LOG_INFO("carhmi: showing %s, %u MP3 file(s) of %s\n", view,
+                          (unsigned)((p != NULL) ? player_count(p) : 0u), dir);
+            shown_t shown;
+            memset(&shown, 0, sizeof(shown));
+            if (p != NULL && player_count(p) > 0)
+                player_play(p, 0);
+            while (!libsystemd_stop_requested())
+            {
+                libdmview_event_t ev;
+                int got = libdmview_wait_event(claim, &ev, (int32_t)EVENT_WAIT_MS);
+                if (p == NULL)
+                    continue;
+                if (got == 0)
+                    handle(p, &ev, &shown);
+                else if (got == -ENOENT)
+                    break;                      /* (the claim is gone - the display with it) */
+                show(claim, p, &shown);
+            }
+            player_free(p);
+            (void)libdmview_release(claim);
+        }
+        else if (ret == -ENODEV)
+        {
+            DMOD_LOG_ERROR("carhmi: no display %s\n", (display != NULL) ? display : "is served by dmview");
+        }
+        else
+        {
+            DMOD_LOG_ERROR("carhmi: cannot claim the display (%d)\n", ret);
+        }
+    }
+
+    libsystemd_set_stop_semaphore(NULL);
+    dmosi_semaphore_destroy(wakeup);
+    return ret;
 }

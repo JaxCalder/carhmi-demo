@@ -14,16 +14,16 @@ dmd=./${module}.dmd => ${destination}/${module}.dmd [origin=${dmf_dir}/${module}
 # Version information
 version=./${module}_version.txt => ${destination}/${module}_version.txt [origin=${dmf_dir}/${module}_version.txt]
 
+# === Configuration files ===
+# carhmi.ini (unit) - used by dmf-get's "carhmi service=carhmi.ini"
+configs=./configs => ${destination}/${module}/configs [origin=${repo_dir}/configs]
+
 # === Documentation ===
 # Module documentation in markdown format for dmf-man tool
 docs=./docs => ${destination}/${module}/docs [origin=${repo_dir}/docs]
 
 # README file
 readme=./README.md => ${destination}/${module}/README.md [origin=${repo_dir}/README.md]
-
-# === Header Files ===
-# Include directory with all headers (public header + generated <module>_defs.h)
-inc=./include => ${destination}/${module}/include [origin=${repo_dir}/include] [origin=${build_dir}/${module}_defs.h]
 
 # === License ===
 # License file

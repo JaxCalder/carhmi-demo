@@ -1,5 +1,6 @@
 # Include dynamically generated versions list from latest release
-$include https://github.com/choco-technologies/carhmi/releases/download/vlatest/versions.dmm
+$include https://github.com/choco-technologies/carhmi-demo/releases/download/vlatest/versions.dmm
 
-# Module entry with version placeholder - expanded by $version-available
-carhmi https://github.com/choco-technologies/carhmi/releases/download/v<version>/carhmi-v<version>-<arch_name>.zip
+# Module entries with version placeholder - expanded by $version-available
+carhmi https://github.com/choco-technologies/carhmi-demo/releases/download/v<version>/carhmi-v<version>-<arch_name>.zip
+carhmi_view https://github.com/choco-technologies/carhmi-demo/releases/download/v<version>/carhmi_view-v<version>-<arch_name>.zip

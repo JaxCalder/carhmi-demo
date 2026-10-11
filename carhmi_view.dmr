@@ -1,0 +1,17 @@
+# DMOD Resource File for carhmi_view (the view of carhmi)
+# This file specifies where resources should be installed
+
+# === Core Module ===
+dmf=./${module}.dmf => ${destination}/${module}.dmf [origin=${dmf_dir}/${module}.dmf]
+dmfc=./${module}.dmfc => ${destination}/${module}.dmfc [origin=${build_dir}/dmfc/${module}.dmfc]
+dmd=./${module}.dmd => ${destination}/${module}.dmd [origin=${dmf_dir}/${module}.dmd]
+version=./${module}_version.txt => ${destination}/${module}_version.txt [origin=${dmf_dir}/${module}_version.txt]
+
+# === The view, its fonts and images (converted from assets/car_hmi.html), with the fonts' licenses ===
+views=./views => ${views_dir} [origin=${views_dir}] [origin=${repo_dir}/assets/fonts/LICENSE-Inter.txt] [origin=${repo_dir}/assets/fonts/LICENSE-Phosphor.txt]
+
+# === License ===
+license=./LICENSE => ${destination}/${module}/LICENSE [origin=${repo_dir}/LICENSE]
+
+# Adding itself
+dmr=./${module}.dmr => ${destination}/${module}/${module}.dmr [origin=${repo_dir}/${module}.dmr]

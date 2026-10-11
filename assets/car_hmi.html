@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Car HMI UI 480x272</title>
+    
+    <!-- Inter (fonts/inter.css: Google Fonts' CSS, with the font files next to it) -->
+    <link href="fonts/inter.css" rel="stylesheet">
+    
+    <!-- Phosphor Icons (Lekkie i nowoczesne ikony): the "bold" and "fill" weights, as @phosphor-icons/web loads them -->
+    <link href="fonts/phosphor-bold.css" rel="stylesheet">
+    <link href="fonts/phosphor-fill.css" rel="stylesheet">
+    
+    <!-- dmod: the channel to the application that shows the page on dmodOS (carhmi).
+         The conversion does not run this file - in a browser it plays the part of carhmi. -->
+    <script src="dmod.js"></script>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Konfiguracja Tailwind -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        /* Płynne przejścia dla widoków aplikacji */
+        .view {
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s ease-in-out, visibility 0.3s;
+        }
+        .view.active {
+            opacity: 1;
+            visibility: visible;
+            z-index: 10;
+        }
+
+        /* Wskaźnik aktywnego przycisku w menu bocznym */
+        .nav-btn::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            width: 4px;
+            height: 24px;
+            background-color: #3b82f6; /* Tailwind blue-500 */
+            border-radius: 0 4px 4px 0;
+            box-shadow: 0 0 8px rgba(59,130,246,1);
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .nav-btn.active::before {
+            opacity: 1;
+        }
+
+        /* Animacja trójwymiarowej siatki mapy */
+        @keyframes drive {
+            from { background-position: 0 0, 0 0; }
+            to { background-position: 0 30px, 0 30px; }
+        }
+        .map-grid {
+            animation: drive 1s linear infinite;
+        }
+
+        /* Wiersze kolejki: grający (row-active), a w nim słupki EQ, gdy gra (is-playing) */
+        .row { border-color: transparent; }
+        .row-frame { border-color: #334155; }
+        .row-title { color: #e2e8f0; }
+        .row-artist { color: #94a3b8; }
+        .row-eq { visibility: hidden; }
+        .row-active { background-color: rgba(99, 102, 241, 0.2); border-color: rgba(99, 102, 241, 0.3); }
+        .row-active .row-frame { border-color: #818cf8; box-shadow: 0 0 5px rgba(99, 102, 241, 0.5); }
+        .row-active .row-title { color: #a5b4fc; }
+        .row-active .row-artist { color: rgba(129, 140, 248, 0.8); }
+        .is-playing .row-active .row-eq { visibility: visible; }
+
+                /* Ukrycie paska przewijania (dla pewności) */
+        ::-webkit-scrollbar {
+            display: none;
+        }
+    </style>
+</head>
+
+<body class="bg-slate-900 flex items-center justify-center min-h-screen text-slate-100 font-sans selection:bg-transparent overflow-hidden">
+    
+    <!-- Dekoracyjne tło udające wnętrze auta/warsztat -->
+    <div class="absolute inset-0 opacity-20 pointer-events-none" style="background-image: radial-gradient(circle at center, transparent 20%, #000 80%); background-size: cover; background-position: center;"></div>
+
+    <!-- Wrapper prezentacyjny (skaluje UI dla wygody podglądu na PC, zachowując logikę 480x272) -->
+    <div class="relative p-6 bg-slate-800/80 backdrop-blur-xl rounded-3xl shadow-2xl border border-slate-700/50 flex flex-col items-center transform scale-110 md:scale-125 lg:scale-150 origin-center">
+        
+        <!-- EKRAN HMI 480x272 -->
+        <div id="hmi-screen" class="w-[480px] h-[272px] bg-slate-950 rounded-xl overflow-hidden relative flex text-white select-none ring-1 ring-white/10 shadow-[inset_0_0_20px_rgba(0,0,0,1)]">
+            
+            <!-- Górny pasek statusu (Topbar) -->
+            <div class="absolute top-0 left-0 w-full h-[24px] bg-slate-900/90 flex justify-between items-center px-3 text-[10px] text-slate-300 z-30 border-b border-slate-700/50 backdrop-blur-md">
+                <div class="flex items-center gap-1.5">
+                    <i class="ph-fill ph-user text-slate-400 text-xs"></i> 
+                    <span class="font-medium tracking-wide">Kierowca 1</span>
+                </div>
+                <div id="clock" class="font-bold text-[11px] tracking-widest text-white drop-shadow-md">14:32</div>
+                <div class="flex items-center gap-2">
+                    <span class="font-medium">18&deg;C</span>
+                    <div class="flex items-center gap-1 text-sky-400">
+                        <span class="font-bold text-[8px] leading-none mt-0.5">LTE</span>
+                        <i class="ph-fill ph-cell-signal-full text-xs"></i>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Menu boczne (Sidebar) -->
+            <nav class="absolute top-[24px] left-0 w-[50px] h-[248px] bg-slate-900/95 flex flex-col justify-evenly items-center py-1 border-r border-slate-700/50 z-20 backdrop-blur-md">
+                <button class="nav-btn active w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-300 relative text-white bg-slate-700/50 shadow-inner" data-target="home">
+                    <i class="ph-bold ph-squares-four text-xl"></i>
+                </button>
+                <button class="nav-btn w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-300 relative text-slate-400 hover:text-slate-200" data-target="nav">
+                    <i class="ph-bold ph-navigation-arrow text-xl"></i>
+                </button>
+                <button class="nav-btn w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-300 relative text-slate-400 hover:text-slate-200" data-target="media">
+                    <i class="ph-bold ph-music-notes text-xl"></i>
+                </button>
+                <button class="nav-btn w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-300 relative text-slate-400 hover:text-slate-200" data-target="climate">
+                    <i class="ph-bold ph-fan text-xl"></i>
+                </button>
+            </nav>
+
+            <!-- Główny obszar zawartości -->
+            <div class="absolute top-[24px] left-[50px] w-[430px] h-[248px] bg-slate-950 overflow-hidden">
+                
+                <!-- WIDOK: HOME / DASHBOARD -->
+                <div id="view-home" class="view active absolute inset-0 flex w-full h-full p-2.5 gap-2 transition-all duration-300">
+                    
+                    <!-- Lewa Kolumna: Zasięg i Bateria -->
+                    <div class="w-1/4 flex flex-col gap-2 justify-center">
+                        <div class="bg-slate-800/60 rounded-xl p-2 text-center border border-slate-700/50 shadow-lg relative overflow-hidden">
+                            <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-green-500 to-green-300"></div>
+                            <i class="ph-fill ph-gas-pump text-green-400 text-xl mb-0.5 drop-shadow-[0_0_5px_rgba(74,222,128,0.8)] mt-1"></i>
+                            <div class="text-[9px] text-slate-400 uppercase tracking-wider">Zasięg</div>
+                            <div class="text-sm font-bold text-white tracking-tight">342 km</div>
+                        </div>
+                        <div class="bg-slate-800/60 rounded-xl p-2 text-center border border-slate-700/50 shadow-lg relative overflow-hidden">
+                            <div class="absolute top-0 left-0 w-[76%] h-1 bg-gradient-to-r from-sky-500 to-sky-300 shadow-[0_0_5px_rgba(56,189,248,0.8)]"></div>
+                            <i class="ph-fill ph-lightning text-sky-400 text-xl mb-0.5 drop-shadow-[0_0_5px_rgba(56,189,248,0.8)] mt-1"></i>
+                            <div class="text-[9px] text-slate-400 uppercase tracking-wider">Bateria</div>
+                            <div class="text-sm font-bold text-white tracking-tight">76%</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Środkowa Kolumna: Prędkościomierz SVG -->
+                    <div class="w-2/4 relative flex flex-col items-center justify-center -mt-2">
+                        <!-- Tło świetlne -->
+                        <div class="absolute w-[120px] h-[120px] bg-blue-500/10 rounded-full blur-xl pointer-events-none"></div>
+                        
+                        <svg class="absolute w-[160px] h-[160px]" viewBox="0 0 160 160">
+                            <!-- Szary tor w tle (270 stopni) -->
+                            <circle cx="80" cy="80" r="68" fill="none" stroke="#1e293b" stroke-width="10" stroke-dasharray="427.2" stroke-dashoffset="106.8" stroke-linecap="round" transform="rotate(135 80 80)"/>
+                            <!-- Aktywna prędkość (Animowana w JS) -->
+                            <circle id="speed-active" cx="80" cy="80" r="68" fill="none" stroke="#3b82f6" stroke-width="10" stroke-dasharray="427.2" stroke-dashoffset="427.2" stroke-linecap="round" transform="rotate(135 80 80)" class="drop-shadow-[0_0_8px_rgba(59,130,246,0.8)]"/>
+                        </svg>
+                        
+                        <!-- Cyfrowy odczyt -->
+                        <div class="flex flex-col items-center z-10 mt-3">
+                            <span id="speed-text" class="text-[44px] font-black text-white tracking-tighter drop-shadow-md leading-none">0</span>
+                            <span class="text-[9px] font-bold text-sky-400 uppercase tracking-widest mt-0.5">km/h</span>
+                        </div>
+                        
+                        <!-- Wskaźnik biegów -->
+                        <div class="absolute bottom-1 flex gap-3 text-xs font-bold bg-slate-900/80 px-4 py-1 rounded-full border border-slate-700/50 backdrop-blur-sm shadow-xl">
+                            <span class="text-slate-600">P</span>
+                            <span class="text-slate-600">R</span>
+                            <span class="text-slate-600">N</span>
+                            <span class="text-blue-400 drop-shadow-[0_0_5px_rgba(59,130,246,1)] scale-110 transition-transform">D</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Prawa Kolumna: Mini Player MP3 -->
+                    <div class="w-1/4 flex flex-col justify-center">
+                        <div class="bg-slate-800/60 rounded-xl p-2 border border-slate-700/50 shadow-lg relative overflow-hidden group cursor-pointer h-[155px] flex flex-col items-center justify-center" onclick="document.querySelector('[data-target=media]').click()">
+                            <div class="absolute inset-0 bg-gradient-to-t from-slate-900/80 via-transparent to-transparent z-10"></div>
+                            
+                            <!-- Płyta winylowa / okładka -->
+                            <div class="w-16 h-16 mx-auto rounded-full border-2 border-slate-800 overflow-hidden animate-[spin_6s_linear_infinite] mb-2 shadow-[0_5px_15px_rgba(0,0,0,0.5)] relative">
+                                <div class="absolute inset-0 rounded-full border border-white/10 z-20"></div>
+                                <div class="absolute top-1/2 left-1/2 w-2 h-2 bg-slate-900 rounded-full transform -translate-x-1/2 -translate-y-1/2 z-20 ring-1 ring-slate-700"></div>
+                                <img id="home-cover" src="images/cover-0.jpg" class="w-full h-full object-cover">
+                            </div>
+                            
+                            <div class="relative z-20 text-center w-full">
+                                <div id="home-title" class="text-[10px] font-bold text-white truncate px-1 drop-shadow-md">Neonowe Noce</div>
+                                <div id="home-artist" class="text-[8px] text-indigo-300 truncate px-1">Synthwave Rider</div>
+                            </div>
+                            
+                            <!-- Skaczące słupki EQ -->
+                            <div class="absolute bottom-2 left-0 right-0 flex justify-center gap-[2px] z-20">
+                                <div class="w-[3px] h-1.5 bg-blue-500 rounded-t shadow-[0_0_3px_rgba(59,130,246,1)] animate-[bounce_0.8s_infinite_alternate]"></div>
+                                <div class="w-[3px] h-3 bg-blue-500 rounded-t shadow-[0_0_3px_rgba(59,130,246,1)] animate-[bounce_1.1s_infinite_alternate]"></div>
+                                <div class="w-[3px] h-2 bg-blue-500 rounded-t shadow-[0_0_3px_rgba(59,130,246,1)] animate-[bounce_0.9s_infinite_alternate]"></div>
+                                <div class="w-[3px] h-2.5 bg-blue-500 rounded-t shadow-[0_0_3px_rgba(59,130,246,1)] animate-[bounce_1.2s_infinite_alternate]"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- WIDOK: NAWIGACJA -->
+                <div id="view-nav" class="view absolute inset-0 w-full h-full overflow-hidden bg-[#050810]">
+                    <!-- Animowana siatka (Grid) perspektywiczna -->
+                    <div class="absolute inset-0 flex justify-center items-end overflow-hidden pointer-events-none z-0">
+                        <div class="w-[800px] h-[600px] origin-bottom map-grid opacity-60" style="
+                            transform: perspective(250px) rotateX(65deg) translateY(80px);
+                            background-image: 
+                                linear-gradient(to right, rgba(236,72,153,0.3) 1px, transparent 1px), 
+                                linear-gradient(to bottom, rgba(236,72,153,0.3) 1px, transparent 1px);
+                            background-size: 30px 30px;
+                        "></div>
+                    </div>
+                    <!-- Gradient horyzontu -->
+                    <div class="absolute top-0 left-0 w-full h-24 bg-gradient-to-b from-[#0a0f18] to-transparent z-0"></div>
+                    
+                    <!-- Wektorowa Linia Trasy i ikona pojazdu -->
+                    <svg class="absolute inset-0 w-full h-full drop-shadow-[0_0_8px_rgba(236,72,153,0.8)] z-10" viewBox="0 0 430 248">
+                        <!-- Trasa -->
+                        <path d="M 215,248 C 215,160 270,130 270,70 L 270,40" fill="none" stroke="#ec4899" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+                        <!-- Cel podróży (kropka) -->
+                        <circle cx="270" cy="40" r="4" fill="#fff" class="drop-shadow-[0_0_5px_rgba(255,255,255,1)]" />
+                        <!-- Pojazd (Trójkąt) -->
+                        <path d="M 207,228 L 223,228 L 215,212 Z" fill="#ec4899" class="drop-shadow-[0_0_5px_rgba(236,72,153,1)]" />
+                    </svg>
+                    
+                    <!-- Wskazówka manewru -->
+                    <div class="absolute top-2 left-2 w-[140px] bg-slate-900/80 backdrop-blur-md rounded-xl p-2 border border-pink-500/30 shadow-[0_4px_15px_rgba(0,0,0,0.5)] z-20">
+                        <div class="flex items-center gap-2">
+                            <i class="ph-bold ph-arrow-u-up-right text-3xl text-pink-500 drop-shadow-[0_0_5px_rgba(236,72,153,0.8)]"></i>
+                            <div>
+                                <div class="text-xs font-bold text-white tracking-wide">300 m</div>
+                                <div class="text-[9px] text-slate-300 truncate">ul. Zwycięstwa</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Pasek informacji o trasie na dole -->
+                    <div class="absolute bottom-2 left-2 right-2 bg-slate-900/85 backdrop-blur-md rounded-lg px-3 py-1.5 border border-slate-700/50 flex justify-between items-center shadow-xl z-20">
+                        <div class="flex items-center gap-5">
+                            <div class="flex flex-col">
+                                <span class="text-green-400 font-bold text-[11px]">14:52</span>
+                                <span class="text-[7px] text-slate-400 uppercase tracking-widest font-semibold">Do celu</span>
+                            </div>
+                            <div class="flex flex-col items-center">
+                                <span class="text-white font-bold text-[11px]">20 min</span>
+                                <span class="text-[7px] text-slate-400 tracking-widest uppercase">14 km</span>
+                            </div>
+                        </div>
+                        <button class="bg-red-500/20 text-red-400 hover:bg-red-500/30 active:scale-95 px-3 py-1 rounded md text-[9px] font-bold transition-all uppercase border border-red-500/30 tracking-wider">
+                            Zakończ
+                        </button>
+                    </div>
+                </div>
+
+                <!-- WIDOK: MULTIMEDIA / MP3 (Zaktualizowany o Playlistę) -->
+                <div id="view-media" class="view absolute inset-0 w-full h-full p-2 bg-slate-950 overflow-hidden flex gap-2">
+                    <!-- Rozmyte tło okładki (Glassmorphism effect) - dynamiczne -->
+                    <img id="media-bg" src="images/cover-0.jpg" class="absolute inset-0 w-full h-full object-cover opacity-30 blur-2xl">
+                    <div class="absolute inset-0 bg-gradient-to-r from-slate-950/95 via-slate-900/80 to-slate-950/95"></div>
+                    
+                    <!-- Lewa kolumna - Now Playing -->
+                    <div class="w-[180px] z-10 flex flex-col items-center justify-center bg-slate-900/60 rounded-xl border border-slate-700/50 backdrop-blur-md p-2 shadow-lg">
+                        <!-- Okładka -->
+                        <div class="w-[90px] h-[90px] rounded-xl shadow-[0_5px_15px_rgba(0,0,0,0.6)] overflow-hidden border border-white/10 relative group mb-2">
+                            <img id="now-playing-cover" src="images/cover-0.jpg" class="w-full h-full object-cover transition-transform duration-500">
+                        </div>
+                        
+                        <div class="text-center w-full px-1">
+                            <h2 id="now-playing-title" class="text-[12px] font-black text-white leading-tight truncate drop-shadow-md">Neonowe Noce</h2>
+                            <p id="now-playing-artist" class="text-[9px] font-semibold text-indigo-300 truncate uppercase mt-0.5">Synthwave Rider</p>
+                        </div>
+                        
+                        <!-- Pasek Postępu -->
+                        <div class="w-full flex items-center gap-1.5 mt-2 text-[8px] font-medium text-slate-300">
+                            <span id="time-current" class="w-[20px] text-right">0:00</span>
+                            <div class="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden relative cursor-pointer border border-slate-700/50 shadow-inner">
+                                <div id="media-progress" data-dmod-width="progress" data-dmod-value="373" class="absolute top-0 left-0 h-full w-full bg-indigo-500 rounded-full shadow-[0_0_5px_rgba(99,102,241,1)]"></div>
+                            </div>
+                            <span id="time-total" class="w-[20px]">3:45</span>
+                        </div>
+                        
+                        <!-- Przyciski Sterowania -->
+                        <div class="flex items-center justify-center gap-4 mt-2 w-full">
+                            <button id="prev-btn" class="text-slate-400 hover:text-white transition active:scale-90"><i class="ph-fill ph-skip-back text-lg drop-shadow-md"></i></button>
+                            <button id="play-btn" class="w-10 h-10 bg-white text-indigo-950 rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition shadow-[0_0_15px_rgba(255,255,255,0.4)]">
+                                <i id="play-icon" class="ph-fill ph-pause text-lg"></i>
+                            </button>
+                            <button id="next-btn" class="text-slate-400 hover:text-white transition active:scale-90"><i class="ph-fill ph-skip-forward text-lg drop-shadow-md"></i></button>
+                        </div>
+                    </div>
+
+                    <!-- Prawa kolumna - Playlist -->
+                    <div class="flex-1 z-10 flex flex-col h-full bg-slate-900/60 rounded-xl border border-slate-700/50 backdrop-blur-md shadow-lg overflow-hidden">
+                        <div class="px-3 py-2 border-b border-slate-700/50 bg-slate-800/40 flex justify-between items-center shadow-sm">
+                            <span id="queue-label" class="text-[9px] font-bold text-slate-300 uppercase tracking-widest drop-shadow-md">Kolejka (5)</span>
+                            <div class="flex gap-2">
+                                <button class="text-slate-400 hover:text-white transition"><i class="ph-bold ph-shuffle text-[10px]"></i></button>
+                                <button class="text-slate-400 hover:text-white transition"><i class="ph-bold ph-repeat text-[10px]"></i></button>
+                            </div>
+                        </div>
+                        <!-- Kontener przewijalny -->
+                        <div id="playlist-container" class="is-playing flex-1 overflow-y-auto p-1 flex flex-col gap-1 pb-16" style="scrollbar-width: none;">
+                            <!-- Utwory z karty: carhmi wypełnia wiersze (dmod), puste są niewidoczne -->
+                            <div id="row-0" class="row row-active flex items-center gap-2 p-1.5 rounded-lg cursor-pointer transition-all duration-300 border">
+                                <div id="row-0-frame" class="row-frame w-8 h-8 rounded-md overflow-hidden shrink-0 border relative">
+                                    <img src="images/cover-0.jpg" class="w-full h-full object-cover">
+                                    <div id="row-0-eq" class="row-eq absolute inset-0 bg-black/50 flex items-center justify-center"><div class="flex gap-[1.5px] h-[10px] items-end"><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_0.8s_infinite_alternate]"></div><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_1.1s_infinite_alternate]"></div><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_0.9s_infinite_alternate]"></div></div></div>
+                                </div>
+                                <div class="flex-1 min-w-0 flex flex-col justify-center">
+                                    <div id="row-0-title" class="row-title text-[10px] font-bold truncate">Neonowe Noce</div>
+                                    <div id="row-0-artist" class="row-artist text-[8px] truncate">Synthwave Rider</div>
+                                </div>
+                                <div id="row-0-time" class="text-[8px] text-slate-500 font-medium px-1">3:45</div>
+                            </div>
+                            <div id="row-1" class="row flex items-center gap-2 p-1.5 rounded-lg cursor-pointer transition-all duration-300 border">
+                                <div id="row-1-frame" class="row-frame w-8 h-8 rounded-md overflow-hidden shrink-0 border relative">
+                                    <img src="images/cover-1.jpg" class="w-full h-full object-cover">
+                                    <div id="row-1-eq" class="row-eq absolute inset-0 bg-black/50 flex items-center justify-center"><div class="flex gap-[1.5px] h-[10px] items-end"><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_0.8s_infinite_alternate]"></div><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_1.1s_infinite_alternate]"></div><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_0.9s_infinite_alternate]"></div></div></div>
+                                </div>
+                                <div class="flex-1 min-w-0 flex flex-col justify-center">
+                                    <div id="row-1-title" class="row-title text-[10px] font-bold truncate">Cyberpunk City</div>
+                                    <div id="row-1-artist" class="row-artist text-[8px] truncate">Neo Tokyo</div>
+                                </div>
+                                <div id="row-1-time" class="text-[8px] text-slate-500 font-medium px-1">4:12</div>
+                            </div>
+                            <div id="row-2" class="row flex items-center gap-2 p-1.5 rounded-lg cursor-pointer transition-all duration-300 border">
+                                <div id="row-2-frame" class="row-frame w-8 h-8 rounded-md overflow-hidden shrink-0 border relative">
+                                    <img src="images/cover-2.jpg" class="w-full h-full object-cover">
+                                    <div id="row-2-eq" class="row-eq absolute inset-0 bg-black/50 flex items-center justify-center"><div class="flex gap-[1.5px] h-[10px] items-end"><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_0.8s_infinite_alternate]"></div><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_1.1s_infinite_alternate]"></div><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_0.9s_infinite_alternate]"></div></div></div>
+                                </div>
+                                <div class="flex-1 min-w-0 flex flex-col justify-center">
+                                    <div id="row-2-title" class="row-title text-[10px] font-bold truncate">Chill Vibes</div>
+                                    <div id="row-2-artist" class="row-artist text-[8px] truncate">Lofi Beats</div>
+                                </div>
+                                <div id="row-2-time" class="text-[8px] text-slate-500 font-medium px-1">2:50</div>
+                            </div>
+                            <div id="row-3" class="row flex items-center gap-2 p-1.5 rounded-lg cursor-pointer transition-all duration-300 border">
+                                <div id="row-3-frame" class="row-frame w-8 h-8 rounded-md overflow-hidden shrink-0 border relative">
+                                    <img src="images/cover-3.jpg" class="w-full h-full object-cover">
+                                    <div id="row-3-eq" class="row-eq absolute inset-0 bg-black/50 flex items-center justify-center"><div class="flex gap-[1.5px] h-[10px] items-end"><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_0.8s_infinite_alternate]"></div><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_1.1s_infinite_alternate]"></div><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_0.9s_infinite_alternate]"></div></div></div>
+                                </div>
+                                <div class="flex-1 min-w-0 flex flex-col justify-center">
+                                    <div id="row-3-title" class="row-title text-[10px] font-bold truncate">Midnight Drive</div>
+                                    <div id="row-3-artist" class="row-artist text-[8px] truncate">Nightcall</div>
+                                </div>
+                                <div id="row-3-time" class="text-[8px] text-slate-500 font-medium px-1">5:05</div>
+                            </div>
+                            <div id="row-4" class="row flex items-center gap-2 p-1.5 rounded-lg cursor-pointer transition-all duration-300 border">
+                                <div id="row-4-frame" class="row-frame w-8 h-8 rounded-md overflow-hidden shrink-0 border relative">
+                                    <img src="images/cover-4.jpg" class="w-full h-full object-cover">
+                                    <div id="row-4-eq" class="row-eq absolute inset-0 bg-black/50 flex items-center justify-center"><div class="flex gap-[1.5px] h-[10px] items-end"><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_0.8s_infinite_alternate]"></div><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_1.1s_infinite_alternate]"></div><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_0.9s_infinite_alternate]"></div></div></div>
+                                </div>
+                                <div class="flex-1 min-w-0 flex flex-col justify-center">
+                                    <div id="row-4-title" class="row-title text-[10px] font-bold truncate">Retro Wave</div>
+                                    <div id="row-4-artist" class="row-artist text-[8px] truncate">80s Synth</div>
+                                </div>
+                                <div id="row-4-time" class="text-[8px] text-slate-500 font-medium px-1">3:30</div>
+                            </div>
+                            <div id="row-5" class="row flex items-center gap-2 p-1.5 rounded-lg cursor-pointer transition-all duration-300 border invisible">
+                                <div id="row-5-frame" class="row-frame w-8 h-8 rounded-md overflow-hidden shrink-0 border relative">
+                                    <img src="images/cover-0.jpg" class="w-full h-full object-cover">
+                                    <div id="row-5-eq" class="row-eq absolute inset-0 bg-black/50 flex items-center justify-center"><div class="flex gap-[1.5px] h-[10px] items-end"><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_0.8s_infinite_alternate]"></div><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_1.1s_infinite_alternate]"></div><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_0.9s_infinite_alternate]"></div></div></div>
+                                </div>
+                                <div class="flex-1 min-w-0 flex flex-col justify-center">
+                                    <div id="row-5-title" class="row-title text-[10px] font-bold truncate"></div>
+                                    <div id="row-5-artist" class="row-artist text-[8px] truncate"></div>
+                                </div>
+                                <div id="row-5-time" class="text-[8px] text-slate-500 font-medium px-1"></div>
+                            </div>
+                            <div id="row-6" class="row flex items-center gap-2 p-1.5 rounded-lg cursor-pointer transition-all duration-300 border invisible">
+                                <div id="row-6-frame" class="row-frame w-8 h-8 rounded-md overflow-hidden shrink-0 border relative">
+                                    <img src="images/cover-1.jpg" class="w-full h-full object-cover">
+                                    <div id="row-6-eq" class="row-eq absolute inset-0 bg-black/50 flex items-center justify-center"><div class="flex gap-[1.5px] h-[10px] items-end"><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_0.8s_infinite_alternate]"></div><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_1.1s_infinite_alternate]"></div><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_0.9s_infinite_alternate]"></div></div></div>
+                                </div>
+                                <div class="flex-1 min-w-0 flex flex-col justify-center">
+                                    <div id="row-6-title" class="row-title text-[10px] font-bold truncate"></div>
+                                    <div id="row-6-artist" class="row-artist text-[8px] truncate"></div>
+                                </div>
+                                <div id="row-6-time" class="text-[8px] text-slate-500 font-medium px-1"></div>
+                            </div>
+                            <div id="row-7" class="row flex items-center gap-2 p-1.5 rounded-lg cursor-pointer transition-all duration-300 border invisible">
+                                <div id="row-7-frame" class="row-frame w-8 h-8 rounded-md overflow-hidden shrink-0 border relative">
+                                    <img src="images/cover-2.jpg" class="w-full h-full object-cover">
+                                    <div id="row-7-eq" class="row-eq absolute inset-0 bg-black/50 flex items-center justify-center"><div class="flex gap-[1.5px] h-[10px] items-end"><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_0.8s_infinite_alternate]"></div><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_1.1s_infinite_alternate]"></div><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_0.9s_infinite_alternate]"></div></div></div>
+                                </div>
+                                <div class="flex-1 min-w-0 flex flex-col justify-center">
+                                    <div id="row-7-title" class="row-title text-[10px] font-bold truncate"></div>
+                                    <div id="row-7-artist" class="row-artist text-[8px] truncate"></div>
+                                </div>
+                                <div id="row-7-time" class="text-[8px] text-slate-500 font-medium px-1"></div>
+                            </div>
+                            <div id="row-8" class="row flex items-center gap-2 p-1.5 rounded-lg cursor-pointer transition-all duration-300 border invisible">
+                                <div id="row-8-frame" class="row-frame w-8 h-8 rounded-md overflow-hidden shrink-0 border relative">
+                                    <img src="images/cover-3.jpg" class="w-full h-full object-cover">
+                                    <div id="row-8-eq" class="row-eq absolute inset-0 bg-black/50 flex items-center justify-center"><div class="flex gap-[1.5px] h-[10px] items-end"><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_0.8s_infinite_alternate]"></div><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_1.1s_infinite_alternate]"></div><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_0.9s_infinite_alternate]"></div></div></div>
+                                </div>
+                                <div class="flex-1 min-w-0 flex flex-col justify-center">
+                                    <div id="row-8-title" class="row-title text-[10px] font-bold truncate"></div>
+                                    <div id="row-8-artist" class="row-artist text-[8px] truncate"></div>
+                                </div>
+                                <div id="row-8-time" class="text-[8px] text-slate-500 font-medium px-1"></div>
+                            </div>
+                            <div id="row-9" class="row flex items-center gap-2 p-1.5 rounded-lg cursor-pointer transition-all duration-300 border invisible">
+                                <div id="row-9-frame" class="row-frame w-8 h-8 rounded-md overflow-hidden shrink-0 border relative">
+                                    <img src="images/cover-4.jpg" class="w-full h-full object-cover">
+                                    <div id="row-9-eq" class="row-eq absolute inset-0 bg-black/50 flex items-center justify-center"><div class="flex gap-[1.5px] h-[10px] items-end"><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_0.8s_infinite_alternate]"></div><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_1.1s_infinite_alternate]"></div><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_0.9s_infinite_alternate]"></div></div></div>
+                                </div>
+                                <div class="flex-1 min-w-0 flex flex-col justify-center">
+                                    <div id="row-9-title" class="row-title text-[10px] font-bold truncate"></div>
+                                    <div id="row-9-artist" class="row-artist text-[8px] truncate"></div>
+                                </div>
+                                <div id="row-9-time" class="text-[8px] text-slate-500 font-medium px-1"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- WIDOK: KLIMATYZACJA -->
+                <div id="view-climate" class="view absolute inset-0 w-full h-full bg-slate-900 flex justify-between p-2 gap-2">
+                    <!-- Tło gradientowe -->
+                    <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-slate-800 to-slate-950 opacity-40 pointer-events-none"></div>
+
+                    <!-- Temperatura Kierowcy -->
+                    <div class="w-[85px] z-10 h-full bg-slate-800/70 rounded-xl border border-slate-700/80 flex flex-col items-center justify-between py-2.5 shadow-lg backdrop-blur-md">
+                        <button class="text-red-400 hover:text-red-300 active:scale-90 transition p-1" onclick="changeTemp('driver', 0.5)">
+                            <i class="ph-fill ph-caret-up text-3xl drop-shadow-[0_0_5px_rgba(248,113,113,0.5)]"></i>
+                        </button>
+                        <div class="flex flex-col items-center my-1">
+                            <span id="temp-driver" class="text-[22px] leading-none font-black text-white tracking-tighter drop-shadow-md">22.0&deg;</span>
+                            <span class="text-[8px] text-slate-400 uppercase tracking-widest mt-1 font-semibold">Kierowca</span>
+                        </div>
+                        <button class="text-blue-400 hover:text-blue-300 active:scale-90 transition p-1" onclick="changeTemp('driver', -0.5)">
+                            <i class="ph-fill ph-caret-down text-3xl drop-shadow-[0_0_5px_rgba(96,165,250,0.5)]"></i>
+                        </button>
+                    </div>
+                    
+                    <!-- Panel Środkowy (Nawiewy) -->
+                    <div class="flex-1 z-10 flex flex-col justify-between py-1">
+                        <!-- Przyciski Funkcyjne -->
+                        <div class="flex justify-center gap-3">
+                            <button id="ac-btn" class="w-[45px] h-[34px] rounded-lg bg-sky-500/20 text-sky-400 border border-sky-500/50 font-bold text-[9px] tracking-wider shadow-[0_0_8px_rgba(14,165,233,0.3)] transition-all">A/C</button>
+                            <button class="w-[45px] h-[34px] rounded-lg bg-slate-800 text-slate-300 border border-slate-700 text-[9px] tracking-wider font-bold hover:bg-slate-700 active:scale-95 transition-all">AUTO</button>
+                            <button class="w-[45px] h-[34px] rounded-lg bg-slate-800 text-slate-300 border border-slate-700 text-[9px] tracking-wider font-bold hover:bg-slate-700 active:scale-95 transition-all">SYNC</button>
+                        </div>
+                        
+                        <!-- Grafika foteli i nawiewu -->
+                        <div class="flex justify-between items-center px-2 mt-1">
+                            <!-- Fotel Kierowcy -->
+                            <button class="text-orange-400 hover:text-orange-300 transition flex flex-col items-center gap-1 group">
+                                <i class="ph-fill ph-armchair text-2xl drop-shadow-[0_0_5px_rgba(251,146,60,0.5)]"></i>
+                                <div class="flex gap-[3px]">
+                                    <div class="w-1.5 h-1.5 rounded-full bg-orange-500 shadow-[0_0_4px_rgba(249,115,22,1)]"></div>
+                                    <div class="w-1.5 h-1.5 rounded-full bg-orange-500 shadow-[0_0_4px_rgba(249,115,22,1)]"></div>
+                                    <div class="w-1.5 h-1.5 rounded-full bg-slate-700"></div>
+                                </div>
+                            </button>
+                            
+                            <!-- Ikona Wiatru -->
+                            <i class="ph-bold ph-wind text-4xl text-sky-400/40 animate-[pulse_2s_ease-in-out_infinite]"></i>
+                            
+                            <!-- Fotel Pasażera -->
+                            <button class="text-slate-500 hover:text-orange-400 transition flex flex-col items-center gap-1 group">
+                                <i class="ph-fill ph-armchair text-2xl group-hover:drop-shadow-[0_0_5px_rgba(251,146,60,0.5)]"></i>
+                                <div class="flex gap-[3px]">
+                                    <div class="w-1.5 h-1.5 rounded-full bg-slate-700 group-hover:bg-orange-500"></div>
+                                    <div class="w-1.5 h-1.5 rounded-full bg-slate-700 group-hover:bg-orange-500"></div>
+                                    <div class="w-1.5 h-1.5 rounded-full bg-slate-700 group-hover:bg-orange-500"></div>
+                                </div>
+                            </button>
+                        </div>
+                        
+                        <!-- Regulacja siły nawiewu -->
+                        <div class="flex items-center gap-2 bg-slate-800/80 rounded-full px-3 py-2 border border-slate-700 mt-2 backdrop-blur-sm shadow-inner">
+                            <button class="text-slate-400 hover:text-white active:scale-90 transition p-1"><i class="ph-bold ph-minus text-sm"></i></button>
+                            <div class="flex-1 flex gap-1.5 justify-center h-2.5">
+                                <div class="flex-1 bg-sky-400 rounded-sm shadow-[0_0_5px_rgba(56,189,248,0.8)]"></div>
+                                <div class="flex-1 bg-sky-400 rounded-sm shadow-[0_0_5px_rgba(56,189,248,0.8)]"></div>
+                                <div class="flex-1 bg-sky-400 rounded-sm shadow-[0_0_5px_rgba(56,189,248,0.8)]"></div>
+                                <div class="flex-1 bg-slate-700 rounded-sm"></div>
+                                <div class="flex-1 bg-slate-700 rounded-sm"></div>
+                            </div>
+                            <button class="text-slate-400 hover:text-white active:scale-90 transition p-1"><i class="ph-bold ph-plus text-sm"></i></button>
+                        </div>
+                    </div>
+                    
+                    <!-- Temperatura Pasażera -->
+                    <div class="w-[85px] z-10 h-full bg-slate-800/70 rounded-xl border border-slate-700/80 flex flex-col items-center justify-between py-2.5 shadow-lg backdrop-blur-md">
+                        <button class="text-red-400 hover:text-red-300 active:scale-90 transition p-1" onclick="changeTemp('pass', 0.5)">
+                            <i class="ph-fill ph-caret-up text-3xl drop-shadow-[0_0_5px_rgba(248,113,113,0.5)]"></i>
+                        </button>
+                        <div class="flex flex-col items-center my-1">
+                            <span id="temp-pass" class="text-[22px] leading-none font-black text-white tracking-tighter drop-shadow-md">20.5&deg;</span>
+                            <span class="text-[8px] text-slate-400 uppercase tracking-widest mt-1 font-semibold">Pasażer</span>
+                        </div>
+                        <button class="text-blue-400 hover:text-blue-300 active:scale-90 transition p-1" onclick="changeTemp('pass', -0.5)">
+                            <i class="ph-fill ph-caret-down text-3xl drop-shadow-[0_0_5px_rgba(96,165,250,0.5)]"></i>
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- 1. Zegar (Górny pasek) ---
+        function updateClock() {
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
+            document.getElementById('clock').textContent = timeStr;
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        // --- 2. Nawigacja między aplikacjami ---
+        const navBtns = document.querySelectorAll('.nav-btn');
+        navBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                // Resetowanie stylów wszystkich przycisków
+                navBtns.forEach(b => {
+                    b.classList.remove('text-white', 'bg-slate-700/50', 'shadow-inner', 'active');
+                    b.classList.add('text-slate-400');
+                });
+                // Ustawienie aktywnego przycisku
+                btn.classList.add('text-white', 'bg-slate-700/50', 'shadow-inner', 'active');
+                btn.classList.remove('text-slate-400');
+                
+                // Ukrycie wszystkich widoków
+                document.querySelectorAll('.view').forEach(v => {
+                    v.classList.remove('active');
+                });
+                
+                // Pokazanie wybranego widoku
+                const target = btn.getAttribute('data-target');
+                document.getElementById('view-' + target).classList.add('active');
+                
+                // Zresetuj animację prędkościomierza, jeśli wchodzimy na ekran główny
+                if(target === 'home') {
+                    animateSpeedometer();
+                }
+            });
+        });
+
+        // --- 3. Animacja Prędkościomierza na Home ---
+        const speedCircle = document.getElementById('speed-active');
+        const speedText = document.getElementById('speed-text');
+        
+        function animateSpeedometer() {
+            // Obwód dla r=68 to ok 427.2. 
+            // Początkowo pasek jest całkowicie schowany (offset=427)
+            speedCircle.style.transition = 'none';
+            speedCircle.setAttribute('stroke-dashoffset', '427.2');
+            speedText.innerText = '0';
+            
+            setTimeout(() => {
+                // Obliczamy docelowy offset dla prędkości 68 km/h.
+                // Widoczna część to 270 stopni (3/4 koła) = dł. 320.4
+                // Proporcja 68 ze 160 (max) to ok. 42.5%
+                // Długość kreski = 320.4 * 0.425 = 136
+                // Docelowy offset = 427.2 - 136 = 291.2
+                
+                speedCircle.style.transition = 'stroke-dashoffset 1.5s cubic-bezier(0.4, 0, 0.2, 1)';
+                speedCircle.setAttribute('stroke-dashoffset', '291.2');
+                
+                let currentSpeed = 0;
+                const targetSpeed = 68;
+                const interval = setInterval(() => {
+                    currentSpeed += 2;
+                    if(currentSpeed >= targetSpeed) {
+                        currentSpeed = targetSpeed;
+                        clearInterval(interval);
+                    }
+                    speedText.innerText = currentSpeed;
+                }, 35);
+            }, 100);
+        }
+        // Uruchom przy starcie
+        animateSpeedometer();
+
+        // --- 4. Odtwarzacz MP3 ---
+        // carhmi gra pliki z karty SD i mówi widokowi, co gra (właściwości dmod), widok
+        // pokazuje to i wysyła mu, co kliknięto (zdarzenia dmod). W przeglądarce dmod.js
+        // udaje carhmi z pięcioma utworami.
+        const ROWS = 10;
+        const covers = ['images/cover-0.jpg', 'images/cover-1.jpg', 'images/cover-2.jpg', 'images/cover-3.jpg', 'images/cover-4.jpg'];
+        const demo = [
+            ['Neonowe Noce', 'Synthwave Rider', 225], ['Cyberpunk City', 'Neo Tokyo', 252], ['Chill Vibes', 'Lofi Beats', 170],
+            ['Midnight Drive', 'Nightcall', 305], ['Retro Wave', '80s Synth', 210],
+        ];
+
+        function formatTime(sec) {
+            const m = Math.floor(sec / 60);
+            const s = Math.floor(sec % 60);
+            return `${m}:${s.toString().padStart(2, '0')}`;
+        }
+
+        dmod.prop('track', 0);              // Numer grającego utworu (od 0)
+        dmod.prop('count', demo.length);    // Utworów na liście
+        dmod.prop('playing', 1);
+        dmod.prop('position', 84);          // Sekundy
+        dmod.prop('duration', 225);
+        dmod.prop('title', 'Neonowe Noce');
+        dmod.prop('artist', 'Synthwave Rider');
+        for (let i = 0; i < ROWS; i++) {
+            const d = (i < demo.length) ? demo[i] : ['', '', 0];
+            dmod.prop('row' + i + '.title', d[0]);
+            dmod.prop('row' + i + '.artist', d[1]);
+            dmod.prop('row' + i + '.time', (i < demo.length) ? formatTime(d[2]) : '');
+        }
+
+        const uiMediaBg = document.getElementById('media-bg');
+        const uiCover = document.getElementById('now-playing-cover');
+        const uiTitle = document.getElementById('now-playing-title');
+        const uiArtist = document.getElementById('now-playing-artist');
+        const uiTimeCurrent = document.getElementById('time-current');
+        const uiTimeTotal = document.getElementById('time-total');
+        const uiQueue = document.getElementById('queue-label');
+        const homeCover = document.getElementById('home-cover');
+        const homeTitle = document.getElementById('home-title');
+        const homeArtist = document.getElementById('home-artist');
+        const playIcon = document.getElementById('play-icon');
+
+        function showTime() {
+            const pos = dmod.get('position');
+            const dur = dmod.get('duration');
+            uiTimeCurrent.innerText = formatTime(pos);
+            uiTimeTotal.innerText = formatTime(dur);
+            // The bar: data-dmod-width="progress" - carhmi sets it (per mille)
+        }
+
+        function showTrack() {
+            const t = dmod.get('track');
+            uiTitle.innerText = dmod.get('title');
+            uiArtist.innerText = dmod.get('artist');
+            homeTitle.innerText = dmod.get('title');
+            homeArtist.innerText = dmod.get('artist');
+            uiCover.src = covers[t % 5];
+            uiMediaBg.src = covers[t % 5];
+            homeCover.src = covers[t % 5];
+            for (let i = 0; i < ROWS; i++) {
+                const row = document.getElementById('row-' + i);
+                if (i === t) row.classList.add('row-active'); else row.classList.remove('row-active');
+            }
+        }
+
+        function showPlaying() {
+            const list = document.getElementById('playlist-container');
+            if (dmod.get('playing')) {
+                playIcon.classList.replace('ph-play', 'ph-pause');
+                list.classList.add('is-playing');
+            } else {
+                playIcon.classList.replace('ph-pause', 'ph-play');
+                list.classList.remove('is-playing');
+            }
+        }
+
+        function showRows() {
+            const count = dmod.get('count');
+            uiQueue.innerText = 'Kolejka (' + count + ')';
+            for (let i = 0; i < ROWS; i++) {
+                const row = document.getElementById('row-' + i);
+                document.getElementById('row-' + i + '-title').innerText = dmod.get('row' + i + '.title');
+                document.getElementById('row-' + i + '-artist').innerText = dmod.get('row' + i + '.artist');
+                document.getElementById('row-' + i + '-time').innerText = dmod.get('row' + i + '.time');
+                if (i < count) row.classList.remove('invisible'); else row.classList.add('invisible');
+            }
+        }
+
+        dmod.onchange('position', showTime);
+        dmod.onchange('duration', showTime);
+        dmod.onchange('track', showTrack);
+        dmod.onchange('title', showTrack);
+        dmod.onchange('artist', showTrack);
+        dmod.onchange('playing', showPlaying);
+        dmod.onchange('count', showRows);
+        for (let i = 0; i < ROWS; i++) {
+            dmod.onchange('row' + i + '.title', showRows);
+            dmod.onchange('row' + i + '.time', showRows);
+            document.getElementById('row-' + i).addEventListener('click', () => dmod.emit('select', i));
+        }
+
+        document.getElementById('play-btn').addEventListener('click', () => dmod.emit('toggle'));
+        document.getElementById('next-btn').addEventListener('click', () => dmod.emit('next'));
+        document.getElementById('prev-btn').addEventListener('click', () => dmod.emit('prev'));
+
+        showTime();
+
+        // --- 5. Logika Klimatyzacji ---
+        function changeTemp(side, change) {
+            const el = document.getElementById('temp-' + side);
+            let current = parseFloat(el.innerText);
+            current += change;
+            
+            // Logika min/max
+            if(current < 16.0) current = 16.0;
+            if(current > 28.0) current = 28.0;
+            
+            el.innerHTML = current.toFixed(1) + '&deg;';
+        }
+
+        // Toggle przycisku A/C
+        const acBtn = document.getElementById('ac-btn');
+        acBtn.addEventListener('click', () => {
+            acBtn.classList.toggle('bg-sky-500/20');
+            acBtn.classList.toggle('text-sky-400');
+            acBtn.classList.toggle('border-sky-500/50');
+            acBtn.classList.toggle('shadow-[0_0_8px_rgba(14,165,233,0.3)]');
+            
+            acBtn.classList.toggle('bg-slate-800');
+            acBtn.classList.toggle('text-slate-300');
+            acBtn.classList.toggle('border-slate-700');
+        });
+
+    </script>
+</body>
+</html>
