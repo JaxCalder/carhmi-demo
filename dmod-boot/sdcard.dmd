@@ -1,0 +1,9 @@
+#
+# carhmi_view - the view of the car HMI demo (sdcard modules).
+#
+# Its views (carhmi.dmv, the fonts and images it draws) are installed to
+# <build>/sdcard/views/carhmi_view/ - on the SD card they are
+# <card>/views/carhmi_view/, where carhmi.ini looks for them. See
+# docs/dmod-boot.md.
+#
+carhmi_view

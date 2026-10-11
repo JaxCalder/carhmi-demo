@@ -35,39 +35,59 @@ set(DMOD_SCRIPTS_DIR ${DMOD_DIR}/scripts CACHE PATH "DMOD scripts directory")
 include(${DMOD_DIR}/paths.cmake)
 dmod_setup_external_module()
 
-# Name of the module
-set(DMOD_MODULE_NAME        carhmi)
+# ======================================================================
+#               The view: assets/car_hmi.html
+# ======================================================================
+# The page (HTML, Tailwind CSS, JavaScript) is converted by todmvs to a .dmvs
+# with the fonts and images it draws (see cmake/carhmi_page.cmake); dmod
+# turns them into the views (.dmv, .dmvf, .dmvi) at build time. The views are
+# too big for a microcontroller's flash, so they are a package of their own
+# (carhmi_view) that goes where the view should be - the SD card.
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/carhmi_page.cmake)
+set(CARHMI_SCREEN           480x272 CACHE STRING "Size of the display the page is laid out for")
+carhmi_convert_page(
+    ${CMAKE_CURRENT_SOURCE_DIR}/assets/car_hmi.html
+    ${CARHMI_SCREEN}
+    hmi-screen                      # the element of the page that is the screen
+    carhmi
+    ${CMAKE_BINARY_DIR}/view-src
+)
 
-# Author (should be string)
+# ======================================================================
+#               carhmi_view - the view (data)
+# ======================================================================
+set(DMOD_MODULE_NAME        carhmi_view)
 set(DMOD_AUTHOR_NAME        "Patryk Kubiak")
-
-# Stack size for the module (should be integer)
-set(DMOD_STACK_SIZE         4096)
-
-# Priority for the thread of the module (should be integer)
+set(DMOD_STACK_SIZE         1024)
 set(DMOD_PRIORITY           0)
-
-# Path to the .dmr file - enables release package creation in build/packages/
-set(DMOD_DMR_PATH           ${CMAKE_CURRENT_SOURCE_DIR}/carhmi.dmr)
-
-# List of MAL interfaces implemented by this module (leave empty if none)
+set(DMOD_DMR_PATH           ${CMAKE_CURRENT_SOURCE_DIR}/carhmi_view.dmr)
+set(DMOD_ASSETS_PATHS       ${CMAKE_BINARY_DIR}/view-src)
 set(DMOD_MAL_IMPLS          )
 
-#
-#   dmod_add_executable - create an executable module
-#   it has the same signature as add_executable,
-#   and can be used in the same way after the creation
-#   (for example, to link libraries)
-#
 dmod_add_executable(${DMOD_MODULE_NAME} ${DMOD_MODULE_VERSION}
-    # List of source files - can include C and C++ files
+    src/carhmi_view.c
+)
+
+# ======================================================================
+#               carhmi - the application (the service)
+# ======================================================================
+set(DMOD_MODULE_NAME        carhmi)
+set(DMOD_AUTHOR_NAME        "Patryk Kubiak")
+set(DMOD_STACK_SIZE         2048)
+set(DMOD_PRIORITY           1)
+set(DMOD_DMR_PATH           ${CMAKE_CURRENT_SOURCE_DIR}/carhmi.dmr)
+set(DMOD_MAL_IMPLS          )
+
+dmod_add_executable(${DMOD_MODULE_NAME} ${DMOD_MODULE_VERSION}
     src/carhmi.c
 )
 
-# To depend on another module's headers, use:
-#   dmod_link_modules(${DMOD_MODULE_NAME}
-#       other_module@1.0
-#   )
+dmod_link_modules(${DMOD_MODULE_NAME}
+    dmdrvi@>=2.5
+    dmosi
+    libdmview@>=0.9
+    libsystemd
+)
 
 enable_testing()
 add_subdirectory(tests)

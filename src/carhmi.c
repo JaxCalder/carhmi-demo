@@ -1,35 +1,86 @@
 #include "dmod.h"
+#include "dmosi.h"
+#include "libdmview.h"
+#include "libsystemd.h"
+#include <errno.h>
 
 /**
- * @brief Pre-initialization function for the module.
- * 
- * @note This function is optional. You can remove it if you don't need it.
- * 
- * This function is called when the module enabling is in progress.
- * 
- * You can use this function to load the required dependencies, such as 
- * other modules. Please be aware that the module is not fully initialized, 
- * so not all the API functions are available - you can check if the API
- * is connected by calling the Dmod_IsFunctionConnected() function.
+ * @brief carhmi - the car HMI demo: shows its view on a display while it runs.
+ *
+ * Usage: carhmi [<view>] [<display>]
+ *
+ * The view (assets/car_hmi.html, converted at build time) is a program of
+ * its own: its pages, the player, the climate controls, the animations and the
+ * touches all run in libdmview, so this application only claims the display
+ * for it (libdmview_claim()). The display's dmview service shows the view
+ * until carhmi ends or is stopped, then returns to its own view.
+ *
+ * It is started as a service (configs/carhmi.ini). The services start
+ * together, so the view - on a card, mounted after this starts - and the
+ * display are waited for.
  */
-void dmod_preinit(void)
+
+#define DEFAULT_VIEW    "/eviews/carhmi_view/carhmi.dmv"   /* dmod-boot: views of the flash modules */
+#define WAIT_MS         100u
+#define DISPLAY_WAIT_MS 10000u
+#define VIEW_WAIT_MS    30000u
+
+int main(int argc, char* argv[])
 {
-    if(Dmod_IsFunctionConnected( Dmod_Printf ))
+    const char* view = (argc > 1 && argv[1][0] != '\0') ? argv[1] : DEFAULT_VIEW;
+    const char* display = (argc > 2 && argv[2][0] != '\0') ? argv[2] : NULL;
+
+    dmosi_semaphore_t wakeup = dmosi_semaphore_create(0, 1);
+    if (wakeup == NULL)
+        return -ENOMEM;
+    libsystemd_set_stop_semaphore(wakeup);
+
+    int ret = -ENOENT;
+    for (uint32_t waited = 0; !libsystemd_stop_requested(); waited += WAIT_MS)
     {
-        Dmod_Printf("API is connected!\n");
+        if (Dmod_FileAvailable(view))
+        {
+            ret = 0;
+            break;
+        }
+        if (waited >= VIEW_WAIT_MS)
+        {
+            DMOD_LOG_ERROR("carhmi: no view %s\n", view);
+            Dmod_Printf("Usage: carhmi [<view>] [<display>]\n");
+            break;
+        }
+        (void)dmosi_semaphore_wait(wakeup, 1, (int32_t)WAIT_MS);
     }
-}
 
-/**
- * @brief Main function of the application
- * 
- * @param argc Number of arguments
- * @param argv Array of arguments
- * 
- * @return 0 if success, error code otherwise
- */
-int main(int argc, char *argv[])
-{
-    Dmod_Printf("Hello, World!\n");
-    return 0;
+    uint32_t claim = 0;
+    if (ret == 0)
+    {
+        ret = -ENODEV;
+        for (uint32_t waited = 0; !libsystemd_stop_requested(); waited += WAIT_MS)
+        {
+            ret = libdmview_claim(display, view, &claim);
+            if (ret != -ENODEV || waited >= DISPLAY_WAIT_MS)
+                break;
+            (void)dmosi_semaphore_wait(wakeup, 1, (int32_t)WAIT_MS);
+        }
+        if (ret == 0)
+        {
+            DMOD_LOG_INFO("carhmi: showing %s\n", view);
+            while (!libsystemd_stop_requested())
+                (void)dmosi_semaphore_wait(wakeup, 1, (int32_t)(10U * WAIT_MS));
+            (void)libdmview_release(claim);
+        }
+        else if (ret == -ENODEV)
+        {
+            DMOD_LOG_ERROR("carhmi: no display %s\n", (display != NULL) ? display : "is served by dmview");
+        }
+        else
+        {
+            DMOD_LOG_ERROR("carhmi: cannot claim the display (%d)\n", ret);
+        }
+    }
+
+    libsystemd_set_stop_semaphore(NULL);
+    dmosi_semaphore_destroy(wakeup);
+    return ret;
 }

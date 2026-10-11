@@ -32,6 +32,8 @@ jobs:
           ls -lh build/dmf/
           test -f build/dmf/carhmi.dmf
           test -f build/dmf/carhmi_version.txt
+          test -f build/dmf/carhmi_view.dmf
+          test -f build/views/carhmi.dmv
           test -f build/dmf/test_carhmi.dmf
           echo "Module files present"
 

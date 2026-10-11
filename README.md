@@ -1,98 +1,81 @@
-# carhmi
+# carhmi-demo
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![CI](https://github.com/choco-technologies/carhmi/actions/workflows/ci.yml/badge.svg)](https://github.com/choco-technologies/carhmi/actions/workflows/ci.yml)
+[![CI](https://github.com/choco-technologies/carhmi-demo/actions/workflows/ci.yml/badge.svg)](https://github.com/choco-technologies/carhmi-demo/actions/workflows/ci.yml)
 
-carhmi DMOD application module.
+A car dashboard (HMI) for a 480 x 272 display - an example of how easily a
+dmodOS application gets a GUI: the interface is **one HTML page**
+([assets/car_hmi.html](assets/car_hmi.html)), made with Tailwind CSS and
+JavaScript, with no code of its own for the screen.
 
-## Description
+At build time the page is laid out as a browser does and compiled into a
+dmview view: its pages, the speedometer, the player and the climate controls,
+animations and touches all run on the device, in dmview - the application
+only claims the display for the view.
 
-TODO: describe what this module does.
+## What's here
+
+| Module | Kind | What it is |
+|--------|------|------------|
+| `carhmi` | Application (service) | Claims the display for the view while it runs |
+| `carhmi_view` | Data | The view: `carhmi.dmv` with its fonts (`.dmvf`) and images (`.dmvi`) |
+
+The view is a package of its own, as it is too big for a microcontroller's
+flash: it goes to the SD card.
+
+## Running it on dmod-boot
+
+```bash
+cmake -S . -B build -DBOARD=stm32f746g-disco \
+    -DDMBOOT_EXTRA_FLASH_DMD_FILES=<carhmi-demo>/dmod-boot/flash.dmd \
+    -DDMBOOT_EXTRA_SDCARD_DMD_FILES=<carhmi-demo>/dmod-boot/sdcard.dmd
+cd build
+cmake --build . --target install-firmware   # the firmware
+cmake --build . --target upload-files       # the view, to the SD card over the console
+```
+
+See [docs/dmod-boot.md](docs/dmod-boot.md).
+
+## The page
+
+[assets](assets) is the design: `car_hmi.html`, the fonts it uses
+(Inter, Phosphor Icons - `assets/fonts`) and the cover images
+(`assets/images`), all next to it, so it also opens in a browser.
+[docs/view.md](docs/view.md) describes how it becomes a view.
 
 ## Building
 
-### Using CMake
-
 ```bash
-mkdir -p build
-cd build
-cmake ..
-cmake --build .
+cmake -S . -B build -DDMOD_TOOLS_NAME=arch/armv7/cortex-m7
+cmake --build build
 ```
 
-Pass `-DDMOD_DIR=/path/to/local/dmod` to build against a local dmod checkout
-instead of fetching `develop` from GitHub.
-
-### Using Make
-
-```bash
-make DMOD_MODE=DMOD_MODULE DMOD_DIR=/path/to/dmod
-```
-
-## Testing
-
-Tests are built automatically alongside the module (see `tests/`). Once built,
-run them with `ctest`:
-
-```bash
-cd build
-ctest --output-on-failure
-```
-
-`ctest` installs the test module's dependencies with `dmf-get` and then runs
-it through `dmod_loader`. To run it manually instead:
-
-```bash
-export DMOD_DMF_DIR=$(pwd)/build/dmf
-dmf-get install -d ${DMOD_DMF_DIR}/test_carhmi-local.dmd -y
-dmod_loader build/dmf/test_carhmi.dmf
-```
-
-## Usage
-
-<TBD>
-
-This application module can be loaded and executed using the DMOD loader:
-
-```bash
-dmod_loader /path/to/carhmi.dmf
-```
-
-## API
-
-`carhmi` is loaded and executed through the DMOD loader - it does not
-expose a callable module API of its own. See
-[docs/api-reference.md](docs/api-reference.md) for its command-line
-arguments and exit codes.
-
-## Documentation
-
-See the `docs/` directory:
-
-- **[api-reference.md](docs/api-reference.md)** - Command-line usage
-
-View documentation using `dmf-man carhmi`.
+The build downloads `todmvs` (and the converters it loads) with `dmf-get`, so
+it needs `dmf-get` and `dmod_loader`. Pass `-DDMOD_DIR=/path/to/local/dmod`
+to build against a local dmod checkout.
 
 ## Project Structure
 
 ```
-carhmi/
-├── docs/              # Documentation (markdown format)
-├── src/
-│   └── carhmi.c
-├── tests/
-│   ├── CMakeLists.txt
-│   └── carhmi_test.c
-├── CMakeLists.txt
-├── Makefile
-├── carhmi.dmr
-└── manifest.dmm
+carhmi-demo/
+├── assets/
+│   ├── car_hmi.html        # the design
+│   ├── fonts/              # Inter, Phosphor Icons (+ their licenses)
+│   └── images/             # cover images
+├── cmake/carhmi_page.cmake # page -> the view's sources (todmvs)
+├── configs/carhmi.ini      # the service unit
+├── dmod-boot/              # flash.dmd and sdcard.dmd to add to dmod-boot
+├── src/carhmi.c            # the application
+├── src/carhmi_view.c       # the data module
+├── carhmi.dmr              # package of carhmi
+├── carhmi_view.dmr         # package of carhmi_view
+├── docs/
+└── tests/
 ```
-
-## Author
-
-Patryk Kubiak
 
 ## License
 
-MIT
+MIT - see [LICENSE](LICENSE). The fonts and images in `assets` have their own
+licenses: Inter (SIL OFL, `assets/fonts/LICENSE-Inter.txt`), Phosphor Icons
+(MIT, `assets/fonts/LICENSE-Phosphor.txt`), the photos are from
+[Unsplash](https://unsplash.com/license).
