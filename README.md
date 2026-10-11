@@ -17,7 +17,7 @@ only claims the display for the view.
 
 | Module | Kind | What it is |
 |--------|------|------------|
-| `carhmi` | Application (service) | Claims the display for the view while it runs |
+| `carhmi` | Application (service) | Claims the display for the view while it runs, plays the MP3 files of the SD card |
 | `carhmi_view` | Data | The view: `carhmi.dmv` with its fonts (`.dmvf`) and images (`.dmvi`) |
 
 The view is a package of its own, as it is too big for a microcontroller's

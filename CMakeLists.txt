@@ -73,20 +73,25 @@ dmod_add_executable(${DMOD_MODULE_NAME} ${DMOD_MODULE_VERSION}
 # ======================================================================
 set(DMOD_MODULE_NAME        carhmi)
 set(DMOD_AUTHOR_NAME        "Patryk Kubiak")
-set(DMOD_STACK_SIZE         2048)
+set(DMOD_STACK_SIZE         4096)
 set(DMOD_PRIORITY           1)
 set(DMOD_DMR_PATH           ${CMAKE_CURRENT_SOURCE_DIR}/carhmi.dmr)
 set(DMOD_MAL_IMPLS          )
 
 dmod_add_executable(${DMOD_MODULE_NAME} ${DMOD_MODULE_VERSION}
     src/carhmi.c
+    src/player.c
 )
 
+# libdmview: the display claimed, the channel of the claim (0.10).
+# dmmp3: the MP3 files. libdmaudio: playing them.
 dmod_link_modules(${DMOD_MODULE_NAME}
-    dmdrvi@>=2.5
+    dmdrvi@>=2.7
     dmosi
-    libdmview@>=0.9
+    libdmview@>=0.10
     libsystemd
+    dmmp3@>=0.1
+    libdmaudio@>=0.1
 )
 
 enable_testing()

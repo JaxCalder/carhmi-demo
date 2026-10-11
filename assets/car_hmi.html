@@ -12,6 +12,10 @@
     <link href="fonts/phosphor-bold.css" rel="stylesheet">
     <link href="fonts/phosphor-fill.css" rel="stylesheet">
     
+    <!-- dmod: the channel to the application that shows the page on dmodOS (carhmi).
+         The conversion does not run this file - in a browser it plays the part of carhmi. -->
+    <script src="dmod.js"></script>
+
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
@@ -69,7 +73,19 @@
             animation: drive 1s linear infinite;
         }
 
-        /* Ukrycie paska przewijania (dla pewności) */
+        /* Wiersze kolejki: grający (row-active), a w nim słupki EQ, gdy gra (is-playing) */
+        .row { border-color: transparent; }
+        .row-frame { border-color: #334155; }
+        .row-title { color: #e2e8f0; }
+        .row-artist { color: #94a3b8; }
+        .row-eq { visibility: hidden; }
+        .row-active { background-color: rgba(99, 102, 241, 0.2); border-color: rgba(99, 102, 241, 0.3); }
+        .row-active .row-frame { border-color: #818cf8; box-shadow: 0 0 5px rgba(99, 102, 241, 0.5); }
+        .row-active .row-title { color: #a5b4fc; }
+        .row-active .row-artist { color: rgba(129, 140, 248, 0.8); }
+        .is-playing .row-active .row-eq { visibility: visible; }
+
+                /* Ukrycie paska przewijania (dla pewności) */
         ::-webkit-scrollbar {
             display: none;
         }
@@ -177,12 +193,12 @@
                             <div class="w-16 h-16 mx-auto rounded-full border-2 border-slate-800 overflow-hidden animate-[spin_6s_linear_infinite] mb-2 shadow-[0_5px_15px_rgba(0,0,0,0.5)] relative">
                                 <div class="absolute inset-0 rounded-full border border-white/10 z-20"></div>
                                 <div class="absolute top-1/2 left-1/2 w-2 h-2 bg-slate-900 rounded-full transform -translate-x-1/2 -translate-y-1/2 z-20 ring-1 ring-slate-700"></div>
-                                <img src="images/cover-0.jpg" class="w-full h-full object-cover">
+                                <img id="home-cover" src="images/cover-0.jpg" class="w-full h-full object-cover">
                             </div>
                             
                             <div class="relative z-20 text-center w-full">
-                                <div class="text-[10px] font-bold text-white truncate px-1 drop-shadow-md">Neonowe Noce</div>
-                                <div class="text-[8px] text-indigo-300 truncate px-1">Synthwave</div>
+                                <div id="home-title" class="text-[10px] font-bold text-white truncate px-1 drop-shadow-md">Neonowe Noce</div>
+                                <div id="home-artist" class="text-[8px] text-indigo-300 truncate px-1">Synthwave Rider</div>
                             </div>
                             
                             <!-- Skaczące słupki EQ -->
@@ -253,7 +269,7 @@
                 <!-- WIDOK: MULTIMEDIA / MP3 (Zaktualizowany o Playlistę) -->
                 <div id="view-media" class="view absolute inset-0 w-full h-full p-2 bg-slate-950 overflow-hidden flex gap-2">
                     <!-- Rozmyte tło okładki (Glassmorphism effect) - dynamiczne -->
-                    <div id="media-bg" class="absolute inset-0 bg-cover bg-center opacity-30 blur-2xl transition-all duration-700" style="background-image: url('images/cover-0.jpg');"></div>
+                    <img id="media-bg" src="images/cover-0.jpg" class="absolute inset-0 w-full h-full object-cover opacity-30 blur-2xl">
                     <div class="absolute inset-0 bg-gradient-to-r from-slate-950/95 via-slate-900/80 to-slate-950/95"></div>
                     
                     <!-- Lewa kolumna - Now Playing -->
@@ -272,7 +288,7 @@
                         <div class="w-full flex items-center gap-1.5 mt-2 text-[8px] font-medium text-slate-300">
                             <span id="time-current" class="w-[20px] text-right">0:00</span>
                             <div class="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden relative cursor-pointer border border-slate-700/50 shadow-inner">
-                                <div id="media-progress" class="absolute top-0 left-0 h-full bg-indigo-500 w-[0%] rounded-full shadow-[0_0_5px_rgba(99,102,241,1)] transition-all ease-linear"></div>
+                                <div id="media-progress" data-dmod-width="progress" data-dmod-value="373" class="absolute top-0 left-0 h-full w-full bg-indigo-500 rounded-full shadow-[0_0_5px_rgba(99,102,241,1)]"></div>
                             </div>
                             <span id="time-total" class="w-[20px]">3:45</span>
                         </div>
@@ -290,15 +306,125 @@
                     <!-- Prawa kolumna - Playlist -->
                     <div class="flex-1 z-10 flex flex-col h-full bg-slate-900/60 rounded-xl border border-slate-700/50 backdrop-blur-md shadow-lg overflow-hidden">
                         <div class="px-3 py-2 border-b border-slate-700/50 bg-slate-800/40 flex justify-between items-center shadow-sm">
-                            <span class="text-[9px] font-bold text-slate-300 uppercase tracking-widest drop-shadow-md">Kolejka (5)</span>
+                            <span id="queue-label" class="text-[9px] font-bold text-slate-300 uppercase tracking-widest drop-shadow-md">Kolejka (5)</span>
                             <div class="flex gap-2">
                                 <button class="text-slate-400 hover:text-white transition"><i class="ph-bold ph-shuffle text-[10px]"></i></button>
                                 <button class="text-slate-400 hover:text-white transition"><i class="ph-bold ph-repeat text-[10px]"></i></button>
                             </div>
                         </div>
                         <!-- Kontener przewijalny -->
-                        <div id="playlist-container" class="flex-1 overflow-y-auto p-1 flex flex-col gap-1 pb-16" style="scrollbar-width: none;">
-                            <!-- Elementy listy ładowane dynamicznie z JavaScript -->
+                        <div id="playlist-container" class="is-playing flex-1 overflow-y-auto p-1 flex flex-col gap-1 pb-16" style="scrollbar-width: none;">
+                            <!-- Utwory z karty: carhmi wypełnia wiersze (dmod), puste są niewidoczne -->
+                            <div id="row-0" class="row row-active flex items-center gap-2 p-1.5 rounded-lg cursor-pointer transition-all duration-300 border">
+                                <div id="row-0-frame" class="row-frame w-8 h-8 rounded-md overflow-hidden shrink-0 border relative">
+                                    <img src="images/cover-0.jpg" class="w-full h-full object-cover">
+                                    <div id="row-0-eq" class="row-eq absolute inset-0 bg-black/50 flex items-center justify-center"><div class="flex gap-[1.5px] h-[10px] items-end"><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_0.8s_infinite_alternate]"></div><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_1.1s_infinite_alternate]"></div><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_0.9s_infinite_alternate]"></div></div></div>
+                                </div>
+                                <div class="flex-1 min-w-0 flex flex-col justify-center">
+                                    <div id="row-0-title" class="row-title text-[10px] font-bold truncate">Neonowe Noce</div>
+                                    <div id="row-0-artist" class="row-artist text-[8px] truncate">Synthwave Rider</div>
+                                </div>
+                                <div id="row-0-time" class="text-[8px] text-slate-500 font-medium px-1">3:45</div>
+                            </div>
+                            <div id="row-1" class="row flex items-center gap-2 p-1.5 rounded-lg cursor-pointer transition-all duration-300 border">
+                                <div id="row-1-frame" class="row-frame w-8 h-8 rounded-md overflow-hidden shrink-0 border relative">
+                                    <img src="images/cover-1.jpg" class="w-full h-full object-cover">
+                                    <div id="row-1-eq" class="row-eq absolute inset-0 bg-black/50 flex items-center justify-center"><div class="flex gap-[1.5px] h-[10px] items-end"><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_0.8s_infinite_alternate]"></div><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_1.1s_infinite_alternate]"></div><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_0.9s_infinite_alternate]"></div></div></div>
+                                </div>
+                                <div class="flex-1 min-w-0 flex flex-col justify-center">
+                                    <div id="row-1-title" class="row-title text-[10px] font-bold truncate">Cyberpunk City</div>
+                                    <div id="row-1-artist" class="row-artist text-[8px] truncate">Neo Tokyo</div>
+                                </div>
+                                <div id="row-1-time" class="text-[8px] text-slate-500 font-medium px-1">4:12</div>
+                            </div>
+                            <div id="row-2" class="row flex items-center gap-2 p-1.5 rounded-lg cursor-pointer transition-all duration-300 border">
+                                <div id="row-2-frame" class="row-frame w-8 h-8 rounded-md overflow-hidden shrink-0 border relative">
+                                    <img src="images/cover-2.jpg" class="w-full h-full object-cover">
+                                    <div id="row-2-eq" class="row-eq absolute inset-0 bg-black/50 flex items-center justify-center"><div class="flex gap-[1.5px] h-[10px] items-end"><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_0.8s_infinite_alternate]"></div><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_1.1s_infinite_alternate]"></div><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_0.9s_infinite_alternate]"></div></div></div>
+                                </div>
+                                <div class="flex-1 min-w-0 flex flex-col justify-center">
+                                    <div id="row-2-title" class="row-title text-[10px] font-bold truncate">Chill Vibes</div>
+                                    <div id="row-2-artist" class="row-artist text-[8px] truncate">Lofi Beats</div>
+                                </div>
+                                <div id="row-2-time" class="text-[8px] text-slate-500 font-medium px-1">2:50</div>
+                            </div>
+                            <div id="row-3" class="row flex items-center gap-2 p-1.5 rounded-lg cursor-pointer transition-all duration-300 border">
+                                <div id="row-3-frame" class="row-frame w-8 h-8 rounded-md overflow-hidden shrink-0 border relative">
+                                    <img src="images/cover-3.jpg" class="w-full h-full object-cover">
+                                    <div id="row-3-eq" class="row-eq absolute inset-0 bg-black/50 flex items-center justify-center"><div class="flex gap-[1.5px] h-[10px] items-end"><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_0.8s_infinite_alternate]"></div><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_1.1s_infinite_alternate]"></div><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_0.9s_infinite_alternate]"></div></div></div>
+                                </div>
+                                <div class="flex-1 min-w-0 flex flex-col justify-center">
+                                    <div id="row-3-title" class="row-title text-[10px] font-bold truncate">Midnight Drive</div>
+                                    <div id="row-3-artist" class="row-artist text-[8px] truncate">Nightcall</div>
+                                </div>
+                                <div id="row-3-time" class="text-[8px] text-slate-500 font-medium px-1">5:05</div>
+                            </div>
+                            <div id="row-4" class="row flex items-center gap-2 p-1.5 rounded-lg cursor-pointer transition-all duration-300 border">
+                                <div id="row-4-frame" class="row-frame w-8 h-8 rounded-md overflow-hidden shrink-0 border relative">
+                                    <img src="images/cover-4.jpg" class="w-full h-full object-cover">
+                                    <div id="row-4-eq" class="row-eq absolute inset-0 bg-black/50 flex items-center justify-center"><div class="flex gap-[1.5px] h-[10px] items-end"><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_0.8s_infinite_alternate]"></div><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_1.1s_infinite_alternate]"></div><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_0.9s_infinite_alternate]"></div></div></div>
+                                </div>
+                                <div class="flex-1 min-w-0 flex flex-col justify-center">
+                                    <div id="row-4-title" class="row-title text-[10px] font-bold truncate">Retro Wave</div>
+                                    <div id="row-4-artist" class="row-artist text-[8px] truncate">80s Synth</div>
+                                </div>
+                                <div id="row-4-time" class="text-[8px] text-slate-500 font-medium px-1">3:30</div>
+                            </div>
+                            <div id="row-5" class="row flex items-center gap-2 p-1.5 rounded-lg cursor-pointer transition-all duration-300 border invisible">
+                                <div id="row-5-frame" class="row-frame w-8 h-8 rounded-md overflow-hidden shrink-0 border relative">
+                                    <img src="images/cover-0.jpg" class="w-full h-full object-cover">
+                                    <div id="row-5-eq" class="row-eq absolute inset-0 bg-black/50 flex items-center justify-center"><div class="flex gap-[1.5px] h-[10px] items-end"><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_0.8s_infinite_alternate]"></div><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_1.1s_infinite_alternate]"></div><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_0.9s_infinite_alternate]"></div></div></div>
+                                </div>
+                                <div class="flex-1 min-w-0 flex flex-col justify-center">
+                                    <div id="row-5-title" class="row-title text-[10px] font-bold truncate"></div>
+                                    <div id="row-5-artist" class="row-artist text-[8px] truncate"></div>
+                                </div>
+                                <div id="row-5-time" class="text-[8px] text-slate-500 font-medium px-1"></div>
+                            </div>
+                            <div id="row-6" class="row flex items-center gap-2 p-1.5 rounded-lg cursor-pointer transition-all duration-300 border invisible">
+                                <div id="row-6-frame" class="row-frame w-8 h-8 rounded-md overflow-hidden shrink-0 border relative">
+                                    <img src="images/cover-1.jpg" class="w-full h-full object-cover">
+                                    <div id="row-6-eq" class="row-eq absolute inset-0 bg-black/50 flex items-center justify-center"><div class="flex gap-[1.5px] h-[10px] items-end"><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_0.8s_infinite_alternate]"></div><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_1.1s_infinite_alternate]"></div><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_0.9s_infinite_alternate]"></div></div></div>
+                                </div>
+                                <div class="flex-1 min-w-0 flex flex-col justify-center">
+                                    <div id="row-6-title" class="row-title text-[10px] font-bold truncate"></div>
+                                    <div id="row-6-artist" class="row-artist text-[8px] truncate"></div>
+                                </div>
+                                <div id="row-6-time" class="text-[8px] text-slate-500 font-medium px-1"></div>
+                            </div>
+                            <div id="row-7" class="row flex items-center gap-2 p-1.5 rounded-lg cursor-pointer transition-all duration-300 border invisible">
+                                <div id="row-7-frame" class="row-frame w-8 h-8 rounded-md overflow-hidden shrink-0 border relative">
+                                    <img src="images/cover-2.jpg" class="w-full h-full object-cover">
+                                    <div id="row-7-eq" class="row-eq absolute inset-0 bg-black/50 flex items-center justify-center"><div class="flex gap-[1.5px] h-[10px] items-end"><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_0.8s_infinite_alternate]"></div><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_1.1s_infinite_alternate]"></div><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_0.9s_infinite_alternate]"></div></div></div>
+                                </div>
+                                <div class="flex-1 min-w-0 flex flex-col justify-center">
+                                    <div id="row-7-title" class="row-title text-[10px] font-bold truncate"></div>
+                                    <div id="row-7-artist" class="row-artist text-[8px] truncate"></div>
+                                </div>
+                                <div id="row-7-time" class="text-[8px] text-slate-500 font-medium px-1"></div>
+                            </div>
+                            <div id="row-8" class="row flex items-center gap-2 p-1.5 rounded-lg cursor-pointer transition-all duration-300 border invisible">
+                                <div id="row-8-frame" class="row-frame w-8 h-8 rounded-md overflow-hidden shrink-0 border relative">
+                                    <img src="images/cover-3.jpg" class="w-full h-full object-cover">
+                                    <div id="row-8-eq" class="row-eq absolute inset-0 bg-black/50 flex items-center justify-center"><div class="flex gap-[1.5px] h-[10px] items-end"><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_0.8s_infinite_alternate]"></div><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_1.1s_infinite_alternate]"></div><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_0.9s_infinite_alternate]"></div></div></div>
+                                </div>
+                                <div class="flex-1 min-w-0 flex flex-col justify-center">
+                                    <div id="row-8-title" class="row-title text-[10px] font-bold truncate"></div>
+                                    <div id="row-8-artist" class="row-artist text-[8px] truncate"></div>
+                                </div>
+                                <div id="row-8-time" class="text-[8px] text-slate-500 font-medium px-1"></div>
+                            </div>
+                            <div id="row-9" class="row flex items-center gap-2 p-1.5 rounded-lg cursor-pointer transition-all duration-300 border invisible">
+                                <div id="row-9-frame" class="row-frame w-8 h-8 rounded-md overflow-hidden shrink-0 border relative">
+                                    <img src="images/cover-4.jpg" class="w-full h-full object-cover">
+                                    <div id="row-9-eq" class="row-eq absolute inset-0 bg-black/50 flex items-center justify-center"><div class="flex gap-[1.5px] h-[10px] items-end"><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_0.8s_infinite_alternate]"></div><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_1.1s_infinite_alternate]"></div><div class="w-[2px] h-full bg-indigo-400 rounded-t animate-[bounce_0.9s_infinite_alternate]"></div></div></div>
+                                </div>
+                                <div class="flex-1 min-w-0 flex flex-col justify-center">
+                                    <div id="row-9-title" class="row-title text-[10px] font-bold truncate"></div>
+                                    <div id="row-9-artist" class="row-artist text-[8px] truncate"></div>
+                                </div>
+                                <div id="row-9-time" class="text-[8px] text-slate-500 font-medium px-1"></div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -465,32 +591,16 @@
         // Uruchom przy starcie
         animateSpeedometer();
 
-        // --- 4. Odtwarzacz MP3 (Playlista i Sterowanie) ---
-        const playlist = [
-            { id: 0, title: "Neonowe Noce", artist: "Synthwave Rider", duration: "3:45", durationSec: 225, cover: "images/cover-0.jpg" },
-            { id: 1, title: "Cyberpunk City", artist: "Neo Tokyo", duration: "4:12", durationSec: 252, cover: "images/cover-1.jpg" },
-            { id: 2, title: "Chill Vibes", artist: "Lofi Beats", duration: "2:50", durationSec: 170, cover: "images/cover-2.jpg" },
-            { id: 3, title: "Midnight Drive", artist: "Nightcall", duration: "5:05", durationSec: 305, cover: "images/cover-3.jpg" },
-            { id: 4, title: "Retro Wave", artist: "80s Synth", duration: "3:30", durationSec: 210, cover: "images/cover-4.jpg" }
+        // --- 4. Odtwarzacz MP3 ---
+        // carhmi gra pliki z karty SD i mówi widokowi, co gra (właściwości dmod), widok
+        // pokazuje to i wysyła mu, co kliknięto (zdarzenia dmod). W przeglądarce dmod.js
+        // udaje carhmi z pięcioma utworami.
+        const ROWS = 10;
+        const covers = ['images/cover-0.jpg', 'images/cover-1.jpg', 'images/cover-2.jpg', 'images/cover-3.jpg', 'images/cover-4.jpg'];
+        const demo = [
+            ['Neonowe Noce', 'Synthwave Rider', 225], ['Cyberpunk City', 'Neo Tokyo', 252], ['Chill Vibes', 'Lofi Beats', 170],
+            ['Midnight Drive', 'Nightcall', 305], ['Retro Wave', '80s Synth', 210],
         ];
-
-        let currentTrackId = 0;
-        let isPlaying = true;
-        let currentSecond = 84; // Symulacja trwającego odtwarzania (1:24)
-
-        const uiMediaBg = document.getElementById('media-bg');
-        const uiCover = document.getElementById('now-playing-cover');
-        const uiTitle = document.getElementById('now-playing-title');
-        const uiArtist = document.getElementById('now-playing-artist');
-        const uiTimeCurrent = document.getElementById('time-current');
-        const uiTimeTotal = document.getElementById('time-total');
-        const uiProgress = document.getElementById('media-progress');
-        const playlistContainer = document.getElementById('playlist-container');
-        
-        const playBtn = document.getElementById('play-btn');
-        const playIcon = document.getElementById('play-icon');
-        const prevBtn = document.getElementById('prev-btn');
-        const nextBtn = document.getElementById('next-btn');
 
         function formatTime(sec) {
             const m = Math.floor(sec / 60);
@@ -498,98 +608,96 @@
             return `${m}:${s.toString().padStart(2, '0')}`;
         }
 
-        function renderPlaylist() {
-            playlistContainer.innerHTML = '';
-            playlist.forEach(track => {
-                const isActive = track.id === currentTrackId;
-                const div = document.createElement('div');
-                div.className = `flex items-center gap-2 p-1.5 rounded-lg cursor-pointer transition-all duration-300 ${isActive ? 'bg-indigo-500/20 border border-indigo-500/30' : 'hover:bg-slate-800/50 border border-transparent'}`;
-                div.onclick = () => loadTrack(track.id);
-                
-                div.innerHTML = `
-                    <div class="w-8 h-8 rounded-md overflow-hidden shrink-0 border ${isActive ? 'border-indigo-400 shadow-[0_0_5px_rgba(99,102,241,0.5)]' : 'border-slate-700'} relative">
-                        <img src="${track.cover}" class="w-full h-full object-cover">
-                        ${isActive && isPlaying ? '<div class="absolute inset-0 bg-black/50 flex items-center justify-center"><div class="flex gap-[1.5px] h-[10px] items-end"><div class="w-[2px] bg-indigo-400 rounded-t animate-[bounce_0.8s_infinite_alternate]"></div><div class="w-[2px] bg-indigo-400 rounded-t animate-[bounce_1.1s_infinite_alternate]"></div><div class="w-[2px] bg-indigo-400 rounded-t animate-[bounce_0.9s_infinite_alternate]"></div></div></div>' : ''}
-                    </div>
-                    <div class="flex-1 min-w-0 flex flex-col justify-center">
-                        <div class="text-[10px] font-bold ${isActive ? 'text-indigo-300' : 'text-slate-200'} truncate">${track.title}</div>
-                        <div class="text-[8px] ${isActive ? 'text-indigo-400/80' : 'text-slate-400'} truncate">${track.artist}</div>
-                    </div>
-                    <div class="text-[8px] text-slate-500 font-medium px-1">${track.duration}</div>
-                `;
-                playlistContainer.appendChild(div);
-            });
+        dmod.prop('track', 0);              // Numer grającego utworu (od 0)
+        dmod.prop('count', demo.length);    // Utworów na liście
+        dmod.prop('playing', 1);
+        dmod.prop('position', 84);          // Sekundy
+        dmod.prop('duration', 225);
+        dmod.prop('title', 'Neonowe Noce');
+        dmod.prop('artist', 'Synthwave Rider');
+        for (let i = 0; i < ROWS; i++) {
+            const d = (i < demo.length) ? demo[i] : ['', '', 0];
+            dmod.prop('row' + i + '.title', d[0]);
+            dmod.prop('row' + i + '.artist', d[1]);
+            dmod.prop('row' + i + '.time', (i < demo.length) ? formatTime(d[2]) : '');
         }
 
-        function loadTrack(id) {
-            currentTrackId = id;
-            currentSecond = 0;
-            const track = playlist[currentTrackId];
-            
-            uiTitle.innerText = track.title;
-            uiArtist.innerText = track.artist;
-            uiTimeTotal.innerText = track.duration;
-            uiCover.src = track.cover;
-            uiMediaBg.style.backgroundImage = `url('${track.cover}')`;
-            
-            // Lekki efekt animacji zmiany utworu
-            uiCover.classList.add('scale-110', 'opacity-70');
-            setTimeout(() => uiCover.classList.remove('scale-110', 'opacity-70'), 300);
+        const uiMediaBg = document.getElementById('media-bg');
+        const uiCover = document.getElementById('now-playing-cover');
+        const uiTitle = document.getElementById('now-playing-title');
+        const uiArtist = document.getElementById('now-playing-artist');
+        const uiTimeCurrent = document.getElementById('time-current');
+        const uiTimeTotal = document.getElementById('time-total');
+        const uiQueue = document.getElementById('queue-label');
+        const homeCover = document.getElementById('home-cover');
+        const homeTitle = document.getElementById('home-title');
+        const homeArtist = document.getElementById('home-artist');
+        const playIcon = document.getElementById('play-icon');
 
-            if(!isPlaying) {
-                isPlaying = true;
-                playIcon.classList.replace('ph-play', 'ph-pause');
+        function showTime() {
+            const pos = dmod.get('position');
+            const dur = dmod.get('duration');
+            uiTimeCurrent.innerText = formatTime(pos);
+            uiTimeTotal.innerText = formatTime(dur);
+            // The bar: data-dmod-width="progress" - carhmi sets it (per mille)
+        }
+
+        function showTrack() {
+            const t = dmod.get('track');
+            uiTitle.innerText = dmod.get('title');
+            uiArtist.innerText = dmod.get('artist');
+            homeTitle.innerText = dmod.get('title');
+            homeArtist.innerText = dmod.get('artist');
+            uiCover.src = covers[t % 5];
+            uiMediaBg.src = covers[t % 5];
+            homeCover.src = covers[t % 5];
+            for (let i = 0; i < ROWS; i++) {
+                const row = document.getElementById('row-' + i);
+                if (i === t) row.classList.add('row-active'); else row.classList.remove('row-active');
             }
-            
-            renderPlaylist();
-            updateProgress();
         }
 
-        function updateProgress() {
-            const track = playlist[currentTrackId];
-            if(isPlaying) {
-                currentSecond++;
-                if(currentSecond >= track.durationSec) {
-                    playNext();
-                    return;
-                }
-            }
-            uiTimeCurrent.innerText = formatTime(currentSecond);
-            const percent = (currentSecond / track.durationSec) * 100;
-            uiProgress.style.width = percent + '%';
-        }
-
-        function playNext() {
-            let nextId = currentTrackId + 1;
-            if(nextId >= playlist.length) nextId = 0;
-            loadTrack(nextId);
-        }
-
-        function playPrev() {
-            let prevId = currentTrackId - 1;
-            if(prevId < 0) prevId = playlist.length - 1;
-            loadTrack(prevId);
-        }
-
-        playBtn.addEventListener('click', () => {
-            isPlaying = !isPlaying;
-            if(isPlaying) {
+        function showPlaying() {
+            const list = document.getElementById('playlist-container');
+            if (dmod.get('playing')) {
                 playIcon.classList.replace('ph-play', 'ph-pause');
+                list.classList.add('is-playing');
             } else {
                 playIcon.classList.replace('ph-pause', 'ph-play');
+                list.classList.remove('is-playing');
             }
-            renderPlaylist(); // Odświeża animację equalizera na playliście
-        });
-        
-        nextBtn.addEventListener('click', playNext);
-        prevBtn.addEventListener('click', playPrev);
+        }
 
-        // Inicjalizacja paska postępu
-        setInterval(updateProgress, 1000);
-        
-        // Pierwszy render Playlisty
-        uiTimeCurrent.innerText = formatTime(currentSecond);
-        renderPlaylist();
+        function showRows() {
+            const count = dmod.get('count');
+            uiQueue.innerText = 'Kolejka (' + count + ')';
+            for (let i = 0; i < ROWS; i++) {
+                const row = document.getElementById('row-' + i);
+                document.getElementById('row-' + i + '-title').innerText = dmod.get('row' + i + '.title');
+                document.getElementById('row-' + i + '-artist').innerText = dmod.get('row' + i + '.artist');
+                document.getElementById('row-' + i + '-time').innerText = dmod.get('row' + i + '.time');
+                if (i < count) row.classList.remove('invisible'); else row.classList.add('invisible');
+            }
+        }
+
+        dmod.onchange('position', showTime);
+        dmod.onchange('duration', showTime);
+        dmod.onchange('track', showTrack);
+        dmod.onchange('title', showTrack);
+        dmod.onchange('artist', showTrack);
+        dmod.onchange('playing', showPlaying);
+        dmod.onchange('count', showRows);
+        for (let i = 0; i < ROWS; i++) {
+            dmod.onchange('row' + i + '.title', showRows);
+            dmod.onchange('row' + i + '.time', showRows);
+            document.getElementById('row-' + i).addEventListener('click', () => dmod.emit('select', i));
+        }
+
+        document.getElementById('play-btn').addEventListener('click', () => dmod.emit('toggle'));
+        document.getElementById('next-btn').addEventListener('click', () => dmod.emit('next'));
+        document.getElementById('prev-btn').addEventListener('click', () => dmod.emit('prev'));
+
+        showTime();
 
         // --- 5. Logika Klimatyzacji ---
         function changeTemp(side, change) {

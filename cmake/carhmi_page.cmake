@@ -25,8 +25,14 @@ function(carhmi_convert_page page screen element name outDir)
     endif()
 
     # todmvs and the converters it loads by name (dmvsi finds dmvs_html for a
-    # page, which compiles its scripts with dmvs_js), for the build host
-    set(TOOL_DIR "${CMAKE_BINARY_DIR}/todmvs")
+    # page, which compiles its scripts with dmvs_js), for the build host -
+    # downloaded, or the ones of CARHMI_TOOLS_DIR (tools built locally)
+    set(CARHMI_TOOLS_DIR "" CACHE PATH "Directory with todmvs, dmvs_html, dmvs_js (.dmf) for the build host; empty: downloaded with dmf-get")
+    if(NOT "${CARHMI_TOOLS_DIR}" STREQUAL "")
+        set(TOOL_DIR "${CARHMI_TOOLS_DIR}")
+    else()
+        set(TOOL_DIR "${CMAKE_BINARY_DIR}/todmvs")
+    endif()
     foreach(TOOL todmvs dmvs_html dmvs_js)
         if(NOT EXISTS "${TOOL_DIR}/${TOOL}.dmf")
             set(GET_OPTIONS -t ${DMOD_VIEWS_TOOLS_NAME} --type dmf -y)
