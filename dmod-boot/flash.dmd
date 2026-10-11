@@ -16,3 +16,8 @@ dmview rules=dmview.rules
 
 # The application: claims the display for the car HMI's view while it runs
 carhmi service=carhmi.ini
+
+# The player's audio: dmaudio.rules starts a dmaudio@<name> for every audio
+# device dmdevfs reports (e.g. the board's codec); carhmi plays through it
+dmaudio service=dmaudio@.ini
+dmaudio rules=dmaudio.rules

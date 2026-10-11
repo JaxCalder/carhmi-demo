@@ -12,6 +12,8 @@ dmview
 dmview service=dmview@.ini      # one dmview per display
 dmview rules=dmview.rules
 carhmi service=carhmi.ini       # claims the display for the view
+dmaudio service=dmaudio@.ini    # the player's audio: one dmaudio per audio device
+dmaudio rules=dmaudio.rules
 ```
 
 `dmod-boot/sdcard.dmd` - the view (about 320 kB: it does not fit in a
@@ -28,7 +30,10 @@ cmake -S . -B build -DBOARD=stm32f746g-disco \
 ```
 
 The board needs a display (and a touch panel for the buttons) in a
-`friends_group`, and the SD card driver - `stm32f746g-disco` has them.
+`friends_group`, the SD card driver, and for the player an audio device
+(dmdrvi 2.7 audio, e.g. the WM8994 codec) - `stm32f746g-disco` has them all;
+dmod-boot's own configuration of it already includes carhmi (see its README),
+so these files are for other boards.
 
 ## The view on the card
 
@@ -45,6 +50,20 @@ partition, mounted by automount) - the path in
 seconds for the view to appear, so it starts after the card is mounted. A view
 on another path: change `args=` of the unit, or run
 `carhmi <view> [<display>]` by hand.
+
+## Music
+
+The player plays the MP3 files of `music/` on the card - next to `views/`
+(`/mnt/dmsdio0_0p1/music`). Put them there when the card is in a PC, or send
+them over the console:
+
+```bash
+python3 <dmod-boot>/scripts/ymodem_send.py --dest /mnt/dmsdio0_0p1/music song.mp3
+```
+
+Give FAT time to write it out before a reset (a few seconds after the
+transfer). carhmi reads the directory when it starts: restart it
+(`service restart carhmi`) or the board to see new files.
 
 ## A view in the firmware
 
