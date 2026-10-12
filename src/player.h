@@ -11,14 +11,13 @@
  * (the device's mixer paces it).
  */
 
-#define PLAYER_TEXT     64u
-
-typedef struct
+typedef struct player_track
 {
-    char        path[192];
-    char        title[PLAYER_TEXT];     /* The tag, else the file's name */
-    char        artist[PLAYER_TEXT];
+    char*       path;
+    char*       title;
+    char*       artist;
     uint32_t    duration_ms;
+    struct player_track* next;
 } player_track_t;
 
 typedef struct player* player_t;
