@@ -17,7 +17,6 @@ typedef struct player_track
     char*       title;
     char*       artist;
     uint32_t    duration_ms;
-    struct player_track* next;
 } player_track_t;
 
 typedef struct player* player_t;

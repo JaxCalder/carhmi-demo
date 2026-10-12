@@ -2,6 +2,7 @@
 #include "dmosi.h"
 #include "dmmp3.h"
 #include "libdmaudio.h"
+#include "dmlist.h"
 #include <errno.h>
 #include <string.h>
 
@@ -21,8 +22,7 @@
 
 struct player
 {
-    player_track_t*     tracks_head;
-    uint32_t            count;
+    dmlist_context_t*  tracks;
     dmosi_mutex_t       lock;
     dmosi_semaphore_t   wake;
     dmosi_thread_t      thread;
@@ -74,32 +74,17 @@ static player_track_t* track_alloc(void)
 static bool is_mp3(const char* name)
 {
     size_t n = strlen(name);
-    if (n < 5 || name[0] == '.')
+    if (n < 4 || name[0] == '.')
         return false;
     const char* e = name + n - 4;
     return e[0] == '.' && (e[1] | 0x20) == 'm' && (e[2] | 0x20) == 'p' && e[3] == '3';
 }
 
-static int by_name(const char* a_path, const char* b_path)
+static int by_name(const void* a, const void* b)
 {
-    return strcmp(a_path, b_path);
-}
-
-static void track_insert_sorted(player_t p, player_track_t* t)
-{
-    player_track_t* prev = NULL;
-    player_track_t* curr = p->tracks_head;
-    while (curr != NULL && by_name(curr->path, t->path) < 0)
-    {
-        prev = curr;
-        curr = curr->next;
-    }
-    t->next = curr;
-    if (prev == NULL)
-        p->tracks_head = t;
-    else
-        prev->next = t;
-    p->count++;
+    const player_track_t* ta = a;
+    const player_track_t* tb = b;
+    return strcmp(ta->path, tb->path);
 }
 
 static uint32_t scan(player_t p, const char* dir)
@@ -147,18 +132,15 @@ static uint32_t scan(player_t p, const char* dir)
         }
         t->artist = (info.artist[0] != '\0') ? Dmod_StrDup(info.artist) : NULL;
         t->duration_ms = info.duration_ms;
-        track_insert_sorted(p, t);
+        dmlist_push_back(p->tracks, t);
     }
     Dmod_CloseDir(d);
-    return p->count;
+    return dmlist_size(p->tracks);
 }
 
 static const player_track_t* track_at(player_t p, uint32_t index)
 {
-    player_track_t* t = p->tracks_head;
-    for (uint32_t i = 0; i < index && t != NULL; i++)
-        t = t->next;
-    return t;
+    return dmlist_get(p->tracks, index);
 }
 
 /* ---- The thread ---- */
@@ -234,9 +216,9 @@ static void player_thread(void* arg)
             dmmp3_close(mp3);
             mp3 = NULL;
             dmosi_mutex_lock(p->lock);
-            if (p->request < 0 && p->count > 0)
+            if (p->request < 0 && dmlist_size(p->tracks) > 0)
             {
-                p->current = (p->current + 1) % (int32_t)p->count;
+                p->current = (p->current + 1) % (int32_t)dmlist_size(p->tracks);
                 p->request = p->current;
                 p->changes++;
             }
@@ -293,12 +275,12 @@ player_t player_new(const char* dir)
     if (p == NULL)
         return NULL;
     memset(p, 0, sizeof(*p));
-    p->tracks_head = NULL;
+    p->tracks = dmlist_create();
     p->lock = dmosi_mutex_create(false);
     p->wake = dmosi_semaphore_create(0, 8);
     p->current = -1;
     p->request = -1;
-    if (p->lock == NULL || p->wake == NULL)
+    if (p->tracks == NULL || p->lock == NULL || p->wake == NULL)
     {
         player_free(p);
         return NULL;
@@ -331,18 +313,17 @@ void player_free(player_t p)
         dmosi_semaphore_destroy(p->wake);
     if (p->lock != NULL)
         dmosi_mutex_destroy(p->lock);
-    while (p->tracks_head != NULL)
+    if (p->tracks != NULL)
     {
-        player_track_t* next = p->tracks_head->next;
-        track_free(p->tracks_head);
-        p->tracks_head = next;
+        dmlist_clear(p->tracks);
+        dmlist_destroy(p->tracks);
     }
     Dmod_Free(p);
 }
 
 uint32_t player_count(player_t p)
 {
-    return p->count;
+    return dmlist_size(p->tracks);
 }
 
 const player_track_t* player_track(player_t p, uint32_t index)
@@ -358,7 +339,7 @@ static void wake(player_t p)
 
 void player_play(player_t p, uint32_t index)
 {
-    if (index >= p->count)
+    if (index >= dmlist_size(p->tracks))
         return;
     dmosi_mutex_lock(p->lock);
     p->current = (int32_t)index;
@@ -372,7 +353,7 @@ void player_play(player_t p, uint32_t index)
 void player_toggle(player_t p)
 {
     dmosi_mutex_lock(p->lock);
-    bool start = p->current < 0 && p->count > 0;
+    bool start = p->current < 0 && dmlist_size(p->tracks) > 0;
     p->playing = !p->playing || start;
     if (start)
     {
@@ -386,10 +367,10 @@ void player_toggle(player_t p)
 
 void player_next(player_t p, int32_t step)
 {
-    if (p->count == 0)
+    if (dmlist_size(p->tracks) == 0)
         return;
     dmosi_mutex_lock(p->lock);
-    int32_t n = (int32_t)p->count;
+    int32_t n = (int32_t)dmlist_size(p->tracks);
     int32_t i = (p->current < 0) ? 0 : (((p->current + step) % n) + n) % n;
     dmosi_mutex_unlock(p->lock);
     player_play(p, (uint32_t)i);

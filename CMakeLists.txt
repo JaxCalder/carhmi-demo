@@ -18,6 +18,12 @@ FetchContent_Declare(
     GIT_TAG        develop
 )
 
+FetchContent_Declare(
+    dmlist
+    GIT_REPOSITORY https://github.com/choco-technologies/dmlist.git
+    GIT_TAG        main
+)
+
 set(DMOD_MODE "DMOD_MODULE" CACHE STRING "DMOD build mode")
 set(DMOD_BUILD_TESTS OFF CACHE BOOL "Build tests")
 set(DMOD_BUILD_EXAMPLES OFF CACHE BOOL "Build examples")
@@ -25,6 +31,7 @@ set(DMOD_BUILD_TOOLS OFF CACHE BOOL "Build tools")
 set(DMOD_BUILD_TEMPLATES OFF CACHE BOOL "Build templates")
 
 FetchContent_MakeAvailable(dmod)
+FetchContent_MakeAvailable(dmlist)
 
 project(carhmi VERSION ${DMOD_MODULE_VERSION}
     DESCRIPTION "carhmi DMOD application module"
@@ -86,6 +93,7 @@ dmod_add_executable(${DMOD_MODULE_NAME} ${DMOD_MODULE_VERSION}
 # libdmview: the display claimed, the channel of the claim (0.10).
 # dmmp3: the MP3 files. libdmaudio: playing them.
 dmod_link_modules(${DMOD_MODULE_NAME}
+    dmlist
     dmdrvi@>=2.7
     dmosi
     libdmview@>=0.10
