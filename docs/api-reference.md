@@ -8,7 +8,7 @@ carhmi [<view>] [<display>] [<music directory>]
 
 | Argument | Meaning |
 |----------|---------|
-| `<view>` | The `.dmv` to show (default `/eviews/carhmi_view/carhmi.dmv`; the service unit gives the one on the SD card) |
+| `<view>` | The `.dmv` to show (default: found - `/eviews/carhmi_view/carhmi.dmv`, else `views/carhmi_view/carhmi.dmv` on any card in `/mnt`) |
 | `<display>` | Name of the display (default: the first one dmview serves) |
 | `<music directory>` | The MP3 files of the player (default: `music` on the card the view is on, else the first `/mnt/<card>/music`) |
 
