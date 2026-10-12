@@ -28,11 +28,37 @@
  */
 
 #define DEFAULT_VIEW    "/eviews/carhmi_view/carhmi.dmv"   /* dmod-boot: views of the flash modules */
+#define CARD_VIEW       "views/carhmi_view/carhmi.dmv"      /* ... and of the SD card's, on any card */
 #define WAIT_MS         100u
 #define DISPLAY_WAIT_MS 10000u
 #define VIEW_WAIT_MS    30000u
 #define EVENT_WAIT_MS   250u
 #define ROWS            10u             /* Of the view's queue */
+
+/*
+ * The view, when none is given: the firmware's (DEFAULT_VIEW), else the one on a
+ * card - automount mounts every card at /mnt/<label> (or /mnt/<node name>), so
+ * each is looked at. false: none (yet)
+ */
+static bool find_view(char* view, size_t size)
+{
+    if (Dmod_FileAvailable(DEFAULT_VIEW))
+    {
+        Dmod_SnPrintf(view, size, "%s", DEFAULT_VIEW);
+        return true;
+    }
+    bool found = false;
+    void* mnt = Dmod_OpenDir("/mnt");
+    const char* name;
+    while (!found && mnt != NULL && (name = Dmod_ReadDir(mnt)) != NULL)
+    {
+        Dmod_SnPrintf(view, size, "/mnt/%s/%s", name, CARD_VIEW);
+        found = Dmod_FileAvailable(view);
+    }
+    if (mnt != NULL)
+        Dmod_CloseDir(mnt);
+    return found;
+}
 
 /* `music` of the card the view is on, else of the first card in /mnt with one */
 static void music_dir(const char* view, char* dir, size_t size)
@@ -163,7 +189,9 @@ static void handle(player_t p, const libdmview_event_t* ev, const shown_t* v)
 
 int main(int argc, char* argv[])
 {
-    const char* view = (argc > 1 && argv[1][0] != '\0') ? argv[1] : DEFAULT_VIEW;
+    bool given = argc > 1 && argv[1][0] != '\0';
+    char view[160];
+    Dmod_SnPrintf(view, sizeof(view), "%s", given ? argv[1] : DEFAULT_VIEW);
     const char* display = (argc > 2 && argv[2][0] != '\0') ? argv[2] : NULL;
 
     dmosi_semaphore_t wakeup = dmosi_semaphore_create(0, 1);
@@ -174,14 +202,21 @@ int main(int argc, char* argv[])
     int ret = -ENOENT;
     for (uint32_t waited = 0; !libsystemd_stop_requested(); waited += WAIT_MS)
     {
-        if (Dmod_FileAvailable(view))
+        if (given ? Dmod_FileAvailable(view) : find_view(view, sizeof(view)))
         {
             ret = 0;
             break;
         }
         if (waited >= VIEW_WAIT_MS)
         {
-            DMOD_LOG_ERROR("carhmi: no view %s\n", view);
+            if (given)
+            {
+                DMOD_LOG_ERROR("carhmi: no view %s\n", view);
+            }
+            else
+            {
+                DMOD_LOG_ERROR("carhmi: no view - neither %s nor /mnt/<card>/%s\n", DEFAULT_VIEW, CARD_VIEW);
+            }
             Dmod_Printf("Usage: carhmi [<view>] [<display>] [<music directory>]\n");
             break;
         }
