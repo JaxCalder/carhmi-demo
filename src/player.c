@@ -64,7 +64,6 @@ static player_track_t* track_alloc(void)
         t->title = NULL;
         t->artist = NULL;
         t->duration_ms = 0;
-        t->next = NULL;
     }
     return t;
 }
