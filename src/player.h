@@ -37,6 +37,7 @@ void player_free(player_t p);
 
 uint32_t player_count(player_t p);
 const player_track_t* player_track(player_t p, uint32_t index);
+void player_load_track_info(player_t p, uint32_t index);
 
 void player_play(player_t p, uint32_t index);      /* From its start */
 void player_toggle(player_t p);

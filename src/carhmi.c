@@ -112,8 +112,13 @@ static uint32_t show_rows(uint32_t claim, player_t p, int32_t current)
         const player_track_t* t = player_track(p, first + i);
         if (t != NULL)
         {
-            format_time(time, sizeof(time), t->duration_ms / 1000u);
-            count++;
+            player_load_track_info(p, first + i);
+            t = player_track(p, first + i);
+            if (t != NULL)
+            {
+                format_time(time, sizeof(time), t->duration_ms / 1000u);
+                count++;
+            }
         }
         Dmod_SnPrintf(name, sizeof(name), "row%u.title", (unsigned)i);
         (void)libdmview_prop_set_string(claim, name, (t != NULL) ? t->title : "");

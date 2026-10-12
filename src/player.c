@@ -128,12 +128,6 @@ static uint32_t scan(player_t p, const char* dir)
         if (path == NULL)
             continue;
         Dmod_SnPrintf(path, path_len, "%s/%s", dir, name);
-        dmmp3_info_t info;
-        if (dmmp3_read_info(path, &info) != 0)
-        {
-            Dmod_Free(path);
-            continue;
-        }
         player_track_t* t = track_alloc();
         if (t == NULL)
         {
@@ -141,26 +135,40 @@ static uint32_t scan(player_t p, const char* dir)
             continue;
         }
         t->path = path;
-        if (info.title[0] != '\0')
-            t->title = Dmod_StrDup(info.title);
-        else
+        size_t base_len = name_len > 4 ? name_len - 4 : name_len;
+        char* title = Dmod_Malloc(base_len + 1);
+        if (title != NULL)
         {
-            size_t base_len = name_len > 4 ? name_len - 4 : name_len;
-            char* title = Dmod_Malloc(base_len + 1);
-            if (title != NULL)
-            {
-                memcpy(title, name, base_len);
-                title[base_len] = '\0';
-            }
-            t->title = title;
+            memcpy(title, name, base_len);
+            title[base_len] = '\0';
         }
-        t->artist = (info.artist[0] != '\0') ? Dmod_StrDup(info.artist) : NULL;
-        t->duration_ms = info.duration_ms;
+        t->title = title;
+        t->artist = NULL;
+        t->duration_ms = 0;
         dmlist_push_back(p->tracks, t);
     }
     Dmod_CloseDir(d);
     tracks_sort(p->tracks);
     return dmlist_size(p->tracks);
+}
+
+void player_load_track_info(player_t p, uint32_t index)
+{
+    player_track_t* t = dmlist_get(p->tracks, index);
+    if (t == NULL || t->duration_ms != 0)
+        return;
+    dmmp3_info_t info;
+    if (dmmp3_read_info(t->path, &info) != 0)
+        return;
+    if (info.title[0] != '\0')
+    {
+        if (t->title != NULL)
+            Dmod_Free(t->title);
+        t->title = Dmod_StrDup(info.title);
+    }
+    if (info.artist[0] != '\0')
+        t->artist = Dmod_StrDup(info.artist);
+    t->duration_ms = info.duration_ms;
 }
 
 static const player_track_t* track_at(player_t p, uint32_t index)
