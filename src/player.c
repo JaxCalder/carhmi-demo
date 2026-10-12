@@ -90,20 +90,25 @@ static void tracks_sort(dmlist_context_t* list)
 {
     if (dmlist_size(list) < 2)
         return;
-    size_t n = dmlist_size(list);
-    for (size_t i = 0; i < n - 1; i++)
+    dmlist_context_t* sorted = dmlist_create();
+    while (!dmlist_is_empty(list))
     {
-        for (size_t j = 0; j < n - i - 1; j++)
+        player_track_t* t = dmlist_pop_front(list);
+        size_t pos = 0;
+        for (size_t i = 0; i < dmlist_size(sorted); i++)
         {
-            player_track_t* a = dmlist_get(list, j);
-            player_track_t* b = dmlist_get(list, j + 1);
-            if (strcmp(a->path, b->path) > 0)
-            {
-                dmlist_set(list, j, b);
-                dmlist_set(list, j + 1, a);
-            }
+            player_track_t* existing = dmlist_get(sorted, i);
+            if (strcmp(t->path, existing->path) < 0)
+                break;
+            pos++;
         }
+        dmlist_insert(sorted, pos, t);
     }
+    while (!dmlist_is_empty(sorted))
+    {
+        dmlist_push_back(list, dmlist_pop_front(sorted));
+    }
+    dmlist_destroy(sorted);
 }
 
 static uint32_t scan(player_t p, const char* dir)
