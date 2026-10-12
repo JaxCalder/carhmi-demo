@@ -73,7 +73,7 @@ static player_track_t* track_alloc(void)
 static bool is_mp3(const char* name)
 {
     size_t n = strlen(name);
-    if (n < 4 || name[0] == '.')
+    if (n < 5 || name[0] == '.')
         return false;
     const char* e = name + n - 4;
     return e[0] == '.' && (e[1] | 0x20) == 'm' && (e[2] | 0x20) == 'p' && e[3] == '3';
