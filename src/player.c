@@ -26,6 +26,9 @@ struct player
     dmosi_mutex_t       lock;
     dmosi_semaphore_t   wake;
     dmosi_thread_t      thread;
+    dmosi_thread_t      scan_thread;    /* Scans the directory in the background */
+    char*               scan_dir;        /* The directory being scanned */
+    bool                loading;         /* True while the scan thread is alive */
     bool                quit;
     bool                done;           /* The thread is out */
 
@@ -300,6 +303,21 @@ static void player_thread(void* arg)
     dmosi_mutex_unlock(p->lock);
 }
 
+static void scan_thread(void* arg)
+{
+    player_t p = arg;
+    (void)scan(p, p->scan_dir);
+    if (p->scan_dir != NULL)
+    {
+        Dmod_Free(p->scan_dir);
+        p->scan_dir = NULL;
+    }
+    dmosi_mutex_lock(p->lock);
+    p->loading = false;
+    p->changes++;
+    dmosi_mutex_unlock(p->lock);
+}
+
 /* ---- The player ---- */
 
 player_t player_new(const char* dir)
@@ -313,12 +331,15 @@ player_t player_new(const char* dir)
     p->wake = dmosi_semaphore_create(0, 8);
     p->current = -1;
     p->request = -1;
+    p->loading = true;
     if (p->tracks == NULL || p->lock == NULL || p->wake == NULL)
     {
         player_free(p);
         return NULL;
     }
-    (void)scan(p, dir);
+    p->scan_dir = Dmod_StrDup(dir);
+    p->scan_thread = dmosi_thread_create(scan_thread, p, THREAD_PRIORITY, THREAD_STACK, "carhmi_scan",
+                                        dmosi_process_current());
     p->thread = dmosi_thread_create(player_thread, p, THREAD_PRIORITY, THREAD_STACK, "carhmi_player",
                                     dmosi_process_current());
     if (p->thread == NULL)
@@ -333,6 +354,11 @@ void player_free(player_t p)
 {
     if (p == NULL)
         return;
+    if (p->scan_thread != NULL)
+    {
+        (void)dmosi_thread_join(p->scan_thread);
+        dmosi_thread_destroy(p->scan_thread);
+    }
     if (p->thread != NULL)
     {
         dmosi_mutex_lock(p->lock);
@@ -351,6 +377,8 @@ void player_free(player_t p)
         dmlist_clear(p->tracks);
         dmlist_destroy(p->tracks);
     }
+    if (p->scan_dir != NULL)
+        Dmod_Free(p->scan_dir);
     Dmod_Free(p);
 }
 
@@ -362,6 +390,17 @@ uint32_t player_count(player_t p)
 const player_track_t* player_track(player_t p, uint32_t index)
 {
     return track_at(p, index);
+}
+
+bool player_is_loading(player_t p)
+{
+    if (p == NULL)
+        return false;
+    bool loading;
+    dmosi_mutex_lock(p->lock);
+    loading = p->loading;
+    dmosi_mutex_unlock(p->lock);
+    return loading;
 }
 
 /* The thread takes what it was asked at once (it takes the posts at the top of its loop) */

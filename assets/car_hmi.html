@@ -314,6 +314,17 @@
                         </div>
                         <!-- Kontener przewijalny -->
                         <div id="playlist-container" class="is-playing flex-1 overflow-y-auto p-1 flex flex-col gap-1 pb-16" style="scrollbar-width: none;">
+                            <!-- Wskaźnik ładowania playlisty (widoczny tylko gdy wczytuje) -->
+                            <div id="loading-indicator" class="flex flex-col items-center justify-center py-8 gap-3" style="display:none;">
+                                <div class="flex gap-1">
+                                    <div class="w-1.5 h-6 bg-indigo-400 rounded animate-[bounce_0.8s_infinite_alternate]"></div>
+                                    <div class="w-1.5 h-6 bg-indigo-400 rounded animate-[bounce_1.1s_infinite_alternate]"></div>
+                                    <div class="w-1.5 h-6 bg-indigo-400 rounded animate-[bounce_0.9s_infinite_alternate]"></div>
+                                    <div class="w-1.5 h-6 bg-indigo-400 rounded animate-[bounce_1.2s_infinite_alternate]"></div>
+                                </div>
+                                <div class="text-[10px] text-slate-400 font-medium">Wczytywanie...</div>
+                            </div>
+
                             <!-- Utwory z karty: carhmi wypełnia wiersze (dmod), puste są niewidoczne -->
                             <div id="row-0" class="row row-active flex items-center gap-2 p-1.5 rounded-lg cursor-pointer transition-all duration-300 border">
                                 <div id="row-0-frame" class="row-frame w-8 h-8 rounded-md overflow-hidden shrink-0 border relative">
@@ -663,6 +674,16 @@
             }
         }
 
+        function showLoading() {
+            const loading = dmod.get('loading');
+            const indicator = document.getElementById('loading-indicator');
+            indicator.style.display = loading ? 'flex' : 'none';
+            for (let i = 0; i < ROWS; i++) {
+                const row = document.getElementById('row-' + i);
+                if (loading) row.classList.add('invisible'); else row.classList.remove('invisible');
+            }
+        }
+
         function showRows() {
             const count = dmod.get('count');
             uiQueue.innerText = 'Kolejka (' + count + ')';
@@ -682,6 +703,7 @@
         dmod.onchange('artist', showTrack);
         dmod.onchange('playing', showPlaying);
         dmod.onchange('count', showRows);
+        dmod.onchange('loading', showLoading);
         for (let i = 0; i < ROWS; i++) {
             dmod.onchange('row' + i + '.title', showRows);
             dmod.onchange('row' + i + '.time', showRows);

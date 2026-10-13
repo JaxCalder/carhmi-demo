@@ -147,6 +147,11 @@ static void show(uint32_t claim, player_t p, shown_t* v)
 {
     player_state_t st;
     player_state(p, &st);
+    if (p != NULL)
+    {
+        bool loading = player_is_loading(p);
+        (void)libdmview_prop_set_int(claim, "loading", loading ? 1 : 0);
+    }
     if (!v->shown || st.changes != v->changes)
     {
         const player_track_t* t = (st.track >= 0) ? player_track(p, (uint32_t)st.track) : NULL;
@@ -247,6 +252,7 @@ int main(int argc, char* argv[])
             else
                 music_dir(view, dir, sizeof(dir));
             player_t p = player_new(dir);
+            (void)libdmview_prop_set_int(claim, "loading", 1);
             DMOD_LOG_INFO("carhmi: showing %s, %u MP3 file(s) of %s\n", view,
                           (unsigned)((p != NULL) ? player_count(p) : 0u), dir);
             shown_t shown;
