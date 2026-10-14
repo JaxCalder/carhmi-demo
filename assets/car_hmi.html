@@ -594,14 +594,24 @@
         // --- 4. Odtwarzacz MP3 ---
         // carhmi gra pliki z karty SD i mówi widokowi, co gra (właściwości dmod), widok
         // pokazuje to i wysyła mu, co kliknięto (zdarzenia dmod). W przeglądarce dmod.js
-        // udaje carhmi z pięcioma utworami.
+        // udaje carhmi z wieloma utworami do testowania przewijania.
         const ROWS = 10;
         // Okładka: na razie jedna, domyślna, dla każdego utworu (images/cover-default.png) -
         // własne okładki utworów (ID3 APIC) przyjdą później, ta zostanie dla tych bez niej.
+        // Demo z 25 utworami, żeby przetestować przewijanie
         const demo = [
             ['Neonowe Noce', 'Synthwave Rider', 225], ['Cyberpunk City', 'Neo Tokyo', 252], ['Chill Vibes', 'Lofi Beats', 170],
             ['Midnight Drive', 'Nightcall', 305], ['Retro Wave', '80s Synth', 210],
+            ['Electric Dreams', 'Digital Frontier', 198], ['Neon Rain', 'Cyber Minds', 267], ['Starlight', 'Astro Beats', 234],
+            ['Pulse', 'Techno Core', 189], ['Horizon', 'Ambient Sky', 312], ['Velocity', 'Speed Demons', 201],
+            ['Echoes', 'Space Voyager', 278], ['Momentum', 'Fast Lane', 215], ['Synth City', 'Digital Dawn', 243],
+            ['Orbit', 'Cosmic Sound', 289], ['Voltage', 'Electro Rush', 176], ['Spectrum', 'Rainbow Beats', 298],
+            ['Phantom', 'Dark Waves', 321], ['Titan', 'Heavy Metal Electronic', 245], ['Solar', 'Sun Ray', 267],
+            ['Lunar', 'Moon Sound', 234], ['Nova', 'Star Burst', 198], ['Quantum', 'Future Tech', 312],
+            ['Signal', 'Radio Wave', 221], ['Matrix', 'Digital Rain', 289],
         ];
+
+        let currentFirst = 0;  // Pierwszy widoczny utwór
 
         function formatTime(sec) {
             const m = Math.floor(sec / 60);
@@ -609,19 +619,31 @@
             return `${m}:${s.toString().padStart(2, '0')}`;
         }
 
+        // Funkcja do ładowania wierszy
+        function loadRows(first) {
+            currentFirst = first;
+            for (let i = 0; i < ROWS; i++) {
+                const idx = first + i;
+                const d = (idx < demo.length) ? demo[idx] : ['', '', 0];
+                dmod.prop('row' + i + '.title', d[0]);
+                dmod.prop('row' + i + '.artist', d[1]);
+                dmod.prop('row' + i + '.time', (idx < demo.length) ? formatTime(d[2]) : '');
+            }
+            dmod.prop('total', demo.length);
+            dmod.prop('first', first);
+        }
+
         dmod.prop('track', 0);              // Numer grającego utworu (od 0)
-        dmod.prop('count', demo.length);    // Utworów na liście
+        dmod.prop('total', demo.length);    // Całkowita liczba utworów
+        dmod.prop('first', 0);              // Pierwszy widoczny
+        dmod.prop('count', ROWS);           // Liczba wierszy (stała)
         dmod.prop('playing', 1);
         dmod.prop('position', 84);          // Sekundy
         dmod.prop('duration', 225);
         dmod.prop('title', 'Neonowe Noce');
         dmod.prop('artist', 'Synthwave Rider');
-        for (let i = 0; i < ROWS; i++) {
-            const d = (i < demo.length) ? demo[i] : ['', '', 0];
-            dmod.prop('row' + i + '.title', d[0]);
-            dmod.prop('row' + i + '.artist', d[1]);
-            dmod.prop('row' + i + '.time', (i < demo.length) ? formatTime(d[2]) : '');
-        }
+        
+        loadRows(0);
 
         const uiTitle = document.getElementById('now-playing-title');
         const uiArtist = document.getElementById('now-playing-artist');
@@ -642,13 +664,17 @@
 
         function showTrack() {
             const t = dmod.get('track');
+            const first = dmod.get('first') || 0;
             uiTitle.innerText = dmod.get('title');
             uiArtist.innerText = dmod.get('artist');
             homeTitle.innerText = dmod.get('title');
             homeArtist.innerText = dmod.get('artist');
             for (let i = 0; i < ROWS; i++) {
                 const row = document.getElementById('row-' + i);
-                if (i === t) row.classList.add('row-active'); else row.classList.remove('row-active');
+                // t jest teraz względne do first (dla urządzenia) lub globalne (dla demo)
+                // Dla demo: obliczamy względny indeks
+                const relativeTrack = (dmod.get('total')) ? t - first : t;
+                if (i === relativeTrack) row.classList.add('row-active'); else row.classList.remove('row-active');
             }
         }
 
@@ -664,15 +690,57 @@
         }
 
         function showRows() {
-            const count = dmod.get('count');
-            uiQueue.innerText = 'Kolejka (' + count + ')';
+            const total = dmod.get('total') || demo.length;
+            const first = dmod.get('first') || 0;
+            uiQueue.innerText = 'Kolejka (' + total + ')';
             for (let i = 0; i < ROWS; i++) {
                 const row = document.getElementById('row-' + i);
                 document.getElementById('row-' + i + '-title').innerText = dmod.get('row' + i + '.title');
                 document.getElementById('row-' + i + '-artist').innerText = dmod.get('row' + i + '.artist');
                 document.getElementById('row-' + i + '-time').innerText = dmod.get('row' + i + '.time');
-                if (i < count) row.classList.remove('invisible'); else row.classList.add('invisible');
+                // Zawsze pokazuj wszystkie wiersze (dla wirtualnego przewijania)
+                row.classList.remove('invisible');
             }
+            // Zapisz aktualną pozycję przewinięcia
+            currentFirst = first;
+        }
+
+        // Obsługa przewijania listy
+        function setupScroll() {
+            const container = document.getElementById('playlist-container');
+            let isScrolling = false;
+            
+            container.addEventListener('scroll', function(e) {
+                if (isScrolling) return;
+                isScrolling = true;
+                
+                const scrollTop = e.target.scrollTop;
+                const scrollHeight = e.target.scrollHeight;
+                const clientHeight = e.target.clientHeight;
+                
+                // Sprawdź czy doszliśmy do końca (przewijanie w dół)
+                if (scrollTop + clientHeight >= scrollHeight - 10) {
+                    // Jesteśmy na dole - załaduj następne utwory
+                    const total = dmod.get('total') || demo.length;
+                    let newFirst = currentFirst + ROWS;
+                    if (newFirst + ROWS <= total) {
+                        loadRows(newFirst);
+                        dmod.emit('scroll', ROWS);
+                    }
+                }
+                // Sprawdź czy doszliśmy do początku (przewijanie w górę)
+                else if (scrollTop <= 10 && currentFirst > 0) {
+                    // Jesteśmy na górze - załaduj poprzednie utwory
+                    let newFirst = currentFirst - ROWS;
+                    if (newFirst < 0) newFirst = 0;
+                    if (newFirst !== currentFirst) {
+                        loadRows(newFirst);
+                        dmod.emit('scroll', -ROWS);
+                    }
+                }
+                
+                setTimeout(() => { isScrolling = false; }, 100);
+            });
         }
 
         dmod.onchange('position', showTime);
@@ -682,6 +750,8 @@
         dmod.onchange('artist', showTrack);
         dmod.onchange('playing', showPlaying);
         dmod.onchange('count', showRows);
+        dmod.onchange('total', showRows);
+        dmod.onchange('first', showRows);
         for (let i = 0; i < ROWS; i++) {
             dmod.onchange('row' + i + '.title', showRows);
             dmod.onchange('row' + i + '.time', showRows);
@@ -692,6 +762,9 @@
         document.getElementById('next-btn').addEventListener('click', () => dmod.emit('next'));
         document.getElementById('prev-btn').addEventListener('click', () => dmod.emit('prev'));
 
+        // Inicjalizacja przewijania
+        setupScroll();
+        
         showTime();
 
         // --- 5. Logika Klimatyzacji ---

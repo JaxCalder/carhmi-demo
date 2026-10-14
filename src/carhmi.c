@@ -105,16 +105,13 @@ static void format_time(char* out, size_t size, uint32_t seconds)
 static uint32_t show_rows(uint32_t claim, player_t p, int32_t current)
 {
     uint32_t first = (current > 0) ? ((uint32_t)current / ROWS) * ROWS : 0u;
-    uint32_t count = 0;
+    uint32_t total = player_count(p);
     for (uint32_t i = 0; i < ROWS; i++)
     {
         char name[24], time[16] = "";
         const player_track_t* t = player_track(p, first + i);
         if (t != NULL)
-        {
             format_time(time, sizeof(time), t->duration_ms / 1000u);
-            count++;
-        }
         Dmod_SnPrintf(name, sizeof(name), "row%u.title", (unsigned)i);
         (void)libdmview_prop_set_string(claim, name, (t != NULL) ? t->title : "");
         Dmod_SnPrintf(name, sizeof(name), "row%u.artist", (unsigned)i);
@@ -122,7 +119,10 @@ static uint32_t show_rows(uint32_t claim, player_t p, int32_t current)
         Dmod_SnPrintf(name, sizeof(name), "row%u.time", (unsigned)i);
         (void)libdmview_prop_set_string(claim, name, time);
     }
-    (void)libdmview_prop_set_int(claim, "count", (int32_t)count);
+    /* total: the real number of tracks; count: how many are shown (for backward compat) */
+    (void)libdmview_prop_set_int(claim, "total", (int32_t)total);
+    (void)libdmview_prop_set_int(claim, "count", (int32_t)ROWS);
+    (void)libdmview_prop_set_int(claim, "first", (int32_t)first);
     return first;
 }
 
@@ -175,7 +175,7 @@ static void show(uint32_t claim, player_t p, shown_t* v)
 }
 
 /* What was clicked */
-static void handle(player_t p, const libdmview_event_t* ev, const shown_t* v)
+static void handle(uint32_t claim, player_t p, const libdmview_event_t* ev, shown_t* v)
 {
     if (strcmp(ev->name, "toggle") == 0)
         player_toggle(p);
@@ -185,6 +185,30 @@ static void handle(player_t p, const libdmview_event_t* ev, const shown_t* v)
         player_next(p, -1);
     else if (strcmp(ev->name, "select") == 0 && ev->value >= 0)
         player_play(p, v->first + (uint32_t)ev->value);
+    else if (strcmp(ev->name, "scroll") == 0)
+    {
+        /* Scroll event: value > 0 means scroll down (load more), value < 0 means scroll up */
+        int32_t delta = ev->value;
+        if (delta != 0)
+        {
+            uint32_t total = player_count(p);
+            int32_t new_first = (int32_t)v->first + delta;
+            /* Clamp to valid range */
+            if (new_first < 0)
+                new_first = 0;
+            if ((uint32_t)new_first + ROWS > total)
+                new_first = (total > ROWS) ? (int32_t)(total - ROWS) : 0;
+            if (new_first != (int32_t)v->first)
+            {
+                /* Just show the rows at new position, don't start playing */
+                v->first = show_rows(claim, p, new_first);
+                /* Update track to show correct position in the view */
+                player_state_t st;
+                player_state(p, &st);
+                (void)libdmview_prop_set_int(claim, "track", st.track - (int32_t)v->first);
+            }
+        }
+    }
 }
 
 int main(int argc, char* argv[])
@@ -255,7 +279,7 @@ int main(int argc, char* argv[])
                 if (p == NULL)
                     continue;
                 if (got == 0)
-                    handle(p, &ev, &shown);
+                    handle(claim, p, &ev, &shown);
                 else if (got == -ENOENT)
                     break;                      /* (the claim is gone - the display with it) */
                 show(claim, p, &shown);
