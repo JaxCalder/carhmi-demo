@@ -85,6 +85,8 @@ dmod_add_executable(${DMOD_MODULE_NAME} ${DMOD_MODULE_VERSION}
     src/volume.c
     src/covers.c
     src/playstate.c
+    src/sfx.c
+    src/sfx_synth.c
 )
 
 # libdmview: the display claimed, the channel of the claim (0.10).

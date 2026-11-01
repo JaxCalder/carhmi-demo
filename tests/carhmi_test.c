@@ -5,6 +5,8 @@
 #include "covers.h"
 #include "player.h"
 #include "playstate.h"
+#include "sfx.h"
+#include "sfx_synth.h"
 #include "dmosi.h"
 #include <string.h>
 
@@ -282,4 +284,279 @@ DMOD_TEST_STEP(player_finds_a_track_by_its_file)
     DMOD_TEST_EXPECT(player_file(p, 1) != NULL && strcmp(player_file(p, 1), "b.mp3") == 0);
     DMOD_TEST_EXPECT(player_file(p, 3) == NULL);
     player_free(p);
+}
+
+/* ---- The sounds of the car ---- */
+
+#define RATE    SFX_SYNTH_RATE_HZ
+
+/* Renders `seconds` of sound into `pcm`, which holds `frames` samples, and returns the peak */
+static int32_t render(sfx_synth_t s, int16_t* pcm, uint32_t frames)
+{
+    sfx_synth_render(s, pcm, frames);
+    int32_t peak = 0;
+    for (uint32_t i = 0; i < frames; i++)
+    {
+        int32_t a = pcm[i] < 0 ? -pcm[i] : pcm[i];
+        if (a > peak)
+            peak = a;
+    }
+    return peak;
+}
+
+/* Of 1 second: the root of the mean square, 0 ... 1 of the full scale (in thousandths) */
+static int32_t rms_milli(const int16_t* pcm, uint32_t frames)
+{
+    uint64_t sum = 0;
+    for (uint32_t i = 0; i < frames; i++)
+        sum += (uint64_t)((int32_t)pcm[i] * pcm[i]);
+    double mean = (double)sum / (double)frames;
+    double x = mean > 0 ? mean : 0;
+    double r = x;                               /* (a square root without libm: Newton) */
+    for (int i = 0; i < 40 && r > 0; i++)
+        r = 0.5 * (r + x / r);
+    return (int32_t)(r * 1000.0 / 32768.0);
+}
+
+/* Frequency by the zero crossings of a stretch, Hz */
+static uint32_t crossings_hz(const int16_t* pcm, uint32_t frames)
+{
+    uint32_t n = 0;
+    for (uint32_t i = 1; i < frames; i++)
+        n += ((pcm[i] >= 0) != (pcm[i - 1] >= 0)) ? 1u : 0u;
+    return (uint32_t)((uint64_t)n * RATE / (2u * frames));
+}
+
+DMOD_TEST_STEP(sfx_sine_is_within_a_tenth_of_a_percent)
+{
+    DMOD_TEST_EXPECT(sfx_synth_sin(0.0f) < 0.002f && sfx_synth_sin(0.0f) > -0.002f);
+    DMOD_TEST_EXPECT(sfx_synth_sin(0.25f) > 0.998f);
+    DMOD_TEST_EXPECT(sfx_synth_sin(0.75f) < -0.998f);
+    DMOD_TEST_EXPECT(sfx_synth_sin(-0.25f) < -0.998f);          /* (a negative phase) */
+    DMOD_TEST_EXPECT(sfx_synth_sin(3.25f) > 0.998f);            /* (turns past the first) */
+    float s = sfx_synth_sin(0.125f);
+    DMOD_TEST_EXPECT(s > 0.7061f && s < 0.7081f);
+}
+
+DMOD_TEST_STEP(sfx_engine_cranks_catches_idles_and_dies_down)
+{
+    sfx_synth_t s = sfx_synth_create();
+    int16_t* pcm = Dmod_Malloc(2u * RATE * sizeof(int16_t));    /* (2 s: the longest render) */
+    DMOD_TEST_EXPECT(s != NULL && pcm != NULL);
+    if (s == NULL || pcm == NULL)
+        return;
+    DMOD_TEST_EXPECT(!sfx_synth_active(s) && render(s, pcm, RATE) == 0);       /* (silent until started) */
+    sfx_synth_engine(s, true);
+    DMOD_TEST_EXPECT(sfx_synth_engine_mode(s) == SFX_ENGINE_START);
+    DMOD_TEST_EXPECT(render(s, pcm, RATE) < 30000);                             /* 0 - 1 s: cranking */
+    DMOD_TEST_EXPECT(rms_milli(pcm, RATE) > 50);
+    DMOD_TEST_EXPECT(sfx_synth_engine_mode(s) == SFX_ENGINE_START);
+    for (int i = 0; i < 3; i++)
+        DMOD_TEST_EXPECT(render(s, pcm, RATE) < 30000);                         /* ... 4 s: the start is over (3.3 s) */
+    DMOD_TEST_EXPECT(sfx_synth_engine_mode(s) == SFX_ENGINE_RUN);
+    DMOD_TEST_EXPECT(rms_milli(pcm, RATE) > 50);                                /* The idle is heard */
+    sfx_synth_engine(s, false);
+    DMOD_TEST_EXPECT(sfx_synth_engine_mode(s) == SFX_ENGINE_STOP && sfx_synth_active(s));
+    (void)render(s, pcm, RATE + RATE / 10u);                                    /* 1.1 s: it died down */
+    DMOD_TEST_EXPECT(sfx_synth_engine_mode(s) == SFX_ENGINE_OFF && !sfx_synth_active(s));
+    DMOD_TEST_EXPECT(render(s, pcm, RATE) == 0);
+    Dmod_Free(pcm);
+    sfx_synth_destroy(s);
+}
+
+DMOD_TEST_STEP(sfx_engine_starts_again_after_it_died_down)
+{
+    sfx_synth_t s = sfx_synth_create();
+    int16_t* pcm = Dmod_Malloc(2u * RATE * sizeof(int16_t));    /* (2 s: the longest render) */
+    DMOD_TEST_EXPECT(s != NULL && pcm != NULL);
+    if (s == NULL || pcm == NULL)
+        return;
+    sfx_synth_engine(s, true);
+    sfx_synth_engine(s, true);                                                  /* (twice: nothing happens) */
+    (void)render(s, pcm, RATE / 2u);
+    sfx_synth_engine(s, false);                                                 /* (still cranking) */
+    DMOD_TEST_EXPECT(sfx_synth_engine_mode(s) == SFX_ENGINE_STOP);
+    (void)render(s, pcm, RATE + RATE / 10u);
+    DMOD_TEST_EXPECT(sfx_synth_engine_mode(s) == SFX_ENGINE_OFF);
+    sfx_synth_engine(s, true);
+    DMOD_TEST_EXPECT(sfx_synth_engine_mode(s) == SFX_ENGINE_START);
+    Dmod_Free(pcm);
+    sfx_synth_destroy(s);
+}
+
+DMOD_TEST_STEP(sfx_siren_wails_between_640_and_1440_hz)
+{
+    sfx_synth_t s = sfx_synth_create();
+    int16_t* pcm = Dmod_Malloc(2u * RATE * sizeof(int16_t));    /* (2 s: the longest render) */
+    DMOD_TEST_EXPECT(s != NULL && pcm != NULL);
+    if (s == NULL || pcm == NULL)
+        return;
+    sfx_synth_siren(s, true);
+    (void)render(s, pcm, RATE / 10u);                                           /* (the fade-in) */
+    DMOD_TEST_EXPECT(render(s, pcm, RATE / 5u) < 30000);
+    uint32_t low = crossings_hz(pcm, RATE / 5u);
+    DMOD_TEST_EXPECT(low > 600 && low < 780);
+    (void)render(s, pcm, RATE + RATE / 3u);                                     /* ... 1.7 s: the top of the wail */
+    (void)render(s, pcm, RATE / 5u);
+    uint32_t high = crossings_hz(pcm, RATE / 5u);
+    DMOD_TEST_EXPECT(high > 1250 && high < 1500);
+    DMOD_TEST_EXPECT(rms_milli(pcm, RATE / 5u) > 100);
+    sfx_synth_siren(s, false);
+    DMOD_TEST_EXPECT(sfx_synth_active(s));                                      /* (fading) */
+    (void)render(s, pcm, RATE / 10u);
+    DMOD_TEST_EXPECT(!sfx_synth_active(s) && render(s, pcm, RATE / 10u) == 0);
+    Dmod_Free(pcm);
+    sfx_synth_destroy(s);
+}
+
+/* Renders `seconds` in pieces of 50 ms; the highest rpm seen, and how many times it fell by `drop` in 0.25 s */
+typedef struct
+{
+    float       max_rpm;
+    uint32_t    drops;
+} rpm_trace_t;
+
+static void trace_rpm(sfx_synth_t s, int16_t* pcm, float seconds, float drop, rpm_trace_t* t)
+{
+    const uint32_t piece = RATE / 20u;
+    float history[5] = { 0, 0, 0, 0, 0 };
+    bool falling = false;
+    memset(t, 0, sizeof(*t));
+    for (uint32_t done = 0; done < (uint32_t)(seconds * (float)RATE); done += piece)
+    {
+        sfx_synth_render(s, pcm, piece);
+        float rpm = sfx_synth_rpm(s);
+        if (rpm > t->max_rpm)
+            t->max_rpm = rpm;
+        bool now = history[0] - rpm > drop;
+        if (now && !falling)
+            t->drops++;
+        falling = now;
+        memmove(history, history + 1, sizeof(history) - sizeof(history[0]));
+        history[4] = rpm;
+        history[0] = history[1];
+    }
+}
+
+/* An engine at the idle, past its start */
+static sfx_synth_t idling_engine(int16_t* pcm)
+{
+    sfx_synth_t s = sfx_synth_create();
+    if (s == NULL)
+        return NULL;
+    sfx_synth_engine(s, true);
+    sfx_synth_render(s, pcm, RATE);
+    sfx_synth_render(s, pcm, RATE);
+    sfx_synth_render(s, pcm, RATE);
+    sfx_synth_render(s, pcm, RATE / 2u);                        /* 3.5 s: it is past the start (3.3 s) */
+    return s;
+}
+
+DMOD_TEST_STEP(sfx_maneuver_is_only_made_by_an_idling_engine)
+{
+    int16_t* pcm = Dmod_Malloc(2u * RATE * sizeof(int16_t));
+    sfx_synth_t s = sfx_synth_create();
+    DMOD_TEST_EXPECT(s != NULL && pcm != NULL);
+    if (s == NULL || pcm == NULL)
+        return;
+    DMOD_TEST_EXPECT(!sfx_synth_maneuver(s, SFX_MANEUVER_BLIP));       /* (off) */
+    sfx_synth_engine(s, true);
+    DMOD_TEST_EXPECT(!sfx_synth_maneuver(s, SFX_MANEUVER_BLIP));       /* (still starting) */
+    sfx_synth_destroy(s);
+    s = idling_engine(pcm);
+    DMOD_TEST_EXPECT(s != NULL && sfx_synth_engine_mode(s) == SFX_ENGINE_RUN);
+    DMOD_TEST_EXPECT(!sfx_synth_maneuver(s, SFX_MANEUVER_NONE));
+    DMOD_TEST_EXPECT(sfx_synth_maneuver(s, SFX_MANEUVER_BLIP));
+    DMOD_TEST_EXPECT(!sfx_synth_maneuver(s, SFX_MANEUVER_PULL));       /* (one at a time) */
+    DMOD_TEST_EXPECT(sfx_synth_maneuver_now(s) == SFX_MANEUVER_BLIP);
+    DMOD_TEST_EXPECT(!sfx_synth_maneuver(NULL, SFX_MANEUVER_BLIP));
+    Dmod_Free(pcm);
+    sfx_synth_destroy(s);
+}
+
+DMOD_TEST_STEP(sfx_blip_revs_up_and_falls_back_to_the_idle)
+{
+    int16_t* pcm = Dmod_Malloc(2u * RATE * sizeof(int16_t));
+    sfx_synth_t s = (pcm != NULL) ? idling_engine(pcm) : NULL;
+    DMOD_TEST_EXPECT(s != NULL);
+    if (s == NULL)
+        return;
+    rpm_trace_t t;
+    float idle = sfx_synth_rpm(s);
+    DMOD_TEST_EXPECT(idle > 850.0f && idle < 1000.0f);
+    DMOD_TEST_EXPECT(sfx_synth_maneuver(s, SFX_MANEUVER_BLIP));
+    trace_rpm(s, pcm, 2.5f, 1000.0f, &t);
+    DMOD_TEST_EXPECT(t.max_rpm > 3000.0f);
+    DMOD_TEST_EXPECT(sfx_synth_rpm(s) < 1100.0f);
+    DMOD_TEST_EXPECT(sfx_synth_maneuver_now(s) == SFX_MANEUVER_NONE && sfx_synth_maneuvers_made(s) == 1);
+    Dmod_Free(pcm);
+    sfx_synth_destroy(s);
+}
+
+DMOD_TEST_STEP(sfx_pull_shifts_up_through_three_gears)
+{
+    int16_t* pcm = Dmod_Malloc(2u * RATE * sizeof(int16_t));
+    sfx_synth_t s = (pcm != NULL) ? idling_engine(pcm) : NULL;
+    DMOD_TEST_EXPECT(s != NULL);
+    if (s == NULL)
+        return;
+    rpm_trace_t t;
+    DMOD_TEST_EXPECT(sfx_synth_maneuver(s, SFX_MANEUVER_PULL));
+    trace_rpm(s, pcm, 5.0f, 800.0f, &t);
+    DMOD_TEST_EXPECT(t.max_rpm > 6000.0f && t.max_rpm < 6600.0f);
+    DMOD_TEST_EXPECT(t.drops >= 3);                                     /* (a shift each: the revs fall at once) */
+    trace_rpm(s, pcm, 1.5f, 800.0f, &t);
+    DMOD_TEST_EXPECT(sfx_synth_rpm(s) < 1100.0f && sfx_synth_maneuvers_made(s) == 1);
+    Dmod_Free(pcm);
+    sfx_synth_destroy(s);
+}
+
+DMOD_TEST_STEP(sfx_idling_engine_is_revved_by_itself)
+{
+    int16_t* pcm = Dmod_Malloc(2u * RATE * sizeof(int16_t));
+    sfx_synth_t s = (pcm != NULL) ? idling_engine(pcm) : NULL;
+    DMOD_TEST_EXPECT(s != NULL);
+    if (s == NULL)
+        return;
+    rpm_trace_t t;
+    trace_rpm(s, pcm, 30.0f, 1000.0f, &t);                              /* (the first comes after 4 - 7 s, then 7 - 16) */
+    DMOD_TEST_EXPECT(sfx_synth_maneuvers_made(s) >= 2);
+    DMOD_TEST_EXPECT(t.max_rpm > 3000.0f);
+    DMOD_TEST_EXPECT(render(s, pcm, RATE / 10u) < 30000);               /* (never louder than the limit) */
+    sfx_synth_engine(s, false);
+    DMOD_TEST_EXPECT(sfx_synth_maneuver_now(s) == SFX_MANEUVER_NONE);   /* (switched off: no maneuver goes on) */
+    Dmod_Free(pcm);
+    sfx_synth_destroy(s);
+}
+
+DMOD_TEST_STEP(sfx_synth_ignores_null)
+{
+    int16_t pcm[4] = { 1, 2, 3, 4 };
+    sfx_synth_engine(NULL, true);
+    sfx_synth_siren(NULL, true);
+    sfx_synth_render(NULL, pcm, 4);
+    DMOD_TEST_EXPECT(pcm[0] == 0 && pcm[3] == 0 && !sfx_synth_active(NULL));
+    DMOD_TEST_EXPECT(sfx_synth_engine_mode(NULL) == SFX_ENGINE_OFF);
+    sfx_synth_destroy(NULL);
+}
+
+DMOD_TEST_STEP(sfx_says_the_start_is_not_over_until_the_thread_has_made_it)
+{
+    sfx_t s = sfx_new();
+    DMOD_TEST_EXPECT(s != NULL);
+    if (s == NULL)
+        return;
+    DMOD_TEST_EXPECT(sfx_engine_started(s) && !sfx_engine_wanted(s));          /* (nothing asked: nothing to wait for) */
+    sfx_engine_set(s, true);
+    DMOD_TEST_EXPECT(sfx_engine_wanted(s));
+    DMOD_TEST_EXPECT(!sfx_engine_started(s));                                  /* (no audio device here: it stays so) */
+    sfx_engine_set(s, false);
+    DMOD_TEST_EXPECT(!sfx_engine_wanted(s) && sfx_engine_started(s));
+    sfx_siren_set(s, true);
+    DMOD_TEST_EXPECT(sfx_siren_wanted(s));
+    sfx_siren_set(s, false);
+    DMOD_TEST_EXPECT(!sfx_siren_wanted(s));
+    sfx_free(s);
+    sfx_free(NULL);
+    DMOD_TEST_EXPECT(sfx_engine_started(NULL) && !sfx_engine_wanted(NULL));
 }

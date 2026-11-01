@@ -115,6 +115,27 @@ again at the next start; without the file the device keeps the output its
 service was started with (dmod-boot's `.dmd`: `speaker/dmaudio@.ini` or the
 headphone one).
 
+## The sounds of the car
+
+The last page of the side bar has two buttons, **SILNIK** (the engine) and **SYRENA** (the police siren). A tap
+switches the sound on or off; the button shows what is heard. The sounds are made, not played from files
+(`sfx_synth.c`: arithmetic only, mono, 22.05 kHz - no samples, no libm; the pitch follows the revs: the firing
+of the cylinders is the clock), and written by a thread of its own
+(`sfx.c`) into a stream of libdmaudio, which the device's mixer adds to the music.
+
+- **The engine** is a V8 with a sports exhaust, started with carhmi: the starter cranks it (1.4 s), it catches with
+  a bark (up to 2700 rpm, a few misfires), falls to the idle (900 rpm) and idles. **The music starts when that
+  is over** (3.3 s; if it does not end within 6 s - there is no audio device - the music starts anyway). Switched
+  off, the engine dies down in a second; switched on again, it starts again.
+- **While it idles it is revved now and then**, every 7 - 16 seconds, one of three things: a blip of the throttle
+  (to 3800 rpm and back, the exhaust pops), a double blip, or a pull through three gears (to 6300 rpm, the
+  ignition cut and a bang at every shift, the revs fall back for the next gear, at the end the throttle is
+  lifted off and the exhaust crackles). `sfx_synth_maneuver()` starts one by hand.
+- **The siren** is a wail: 640 - 1440 Hz and back in 3.4 s. It fades in and out in 50 ms.
+
+Nothing is kept: the engine is on at every start, the siren off. Without the audio device the buttons still
+switch, and there is nothing to hear.
+
 ## The channel
 
 carhmi and the view talk through the claim's channel (libdmview 0.10;
@@ -134,6 +155,7 @@ the scrolling needs dmview's SCROLLED, 0.12.1):
 | `volume` | carhmi | 0..100, the master volume (`data-dmod-width`, scale 100) |
 | `muted` | carhmi | 1 while the sound is off |
 | `headphones` | carhmi | 1: the device plays through the headphones (line out), 0: the speaker |
+| `engine`, `siren` | carhmi | 1: the sound is wanted (the engine starts or idles, the siren wails), 0: not |
 | `cover`, `rowN.cover` | carhmi | The image of the playing track, of a row: `<music>/.covers/<key>` (the view adds a size's end), else the view's own |
 | `cover.sizes`, `row0.cover.sizes` | the view | The ends of the files' names of the sizes it shows a cover at (todmvs) |
 | `covers.done`, `covers.total` | carhmi | Tracks whose covers are done, of all |
@@ -148,3 +170,5 @@ the scrolling needs dmview's SCROLLED, 0.12.1):
 | `volume` | 0..100 | Sets the volume (and turns the sound on) |
 | `mute` | - | Mutes, or turns the sound on |
 | `output` | - | Switches between the speaker and the headphones |
+| `engine` | - | Starts the engine, or lets it die down |
+| `siren` | - | Switches the siren |

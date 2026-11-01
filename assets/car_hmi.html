@@ -108,6 +108,10 @@
         .oi-hp { display: none; }
         .hp .oi-hp { display: flex; }
         .hp .oi-sp { display: none; }
+        /* Dźwięki: przycisk włączony (.on na przycisku) pokazuje swój drugi wygląd */
+        .sd-on { display: none; }
+        .on .sd-on { display: flex; }
+        .on .sd-off { display: none; }
 
                 /* Ukrycie paska przewijania (dla pewności) */
         ::-webkit-scrollbar {
@@ -184,6 +188,9 @@
                 </button>
                 <button class="nav-btn w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-300 relative text-slate-400 hover:text-slate-200" data-target="climate">
                     <i class="ph-bold ph-fan text-xl"></i>
+                </button>
+                <button class="nav-btn w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-300 relative text-slate-400 hover:text-slate-200" data-target="sounds">
+                    <i class="ph-bold ph-waveform text-xl"></i>
                 </button>
             </nav>
 
@@ -686,6 +693,46 @@
                     </div>
                 </div>
 
+                <!-- WIDOK: DŹWIĘKI (silnik, syrena) -->
+                <div id="view-sounds" class="view absolute inset-0 w-full h-full bg-slate-900 flex p-2 gap-2">
+                    <!-- Tło gradientowe -->
+                    <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-slate-800 to-slate-950 opacity-40 pointer-events-none"></div>
+                    <div class="relative z-10 flex w-full h-full gap-2">
+                        <button id="engine-btn" class="flex-1 h-full rounded-xl relative overflow-hidden active:scale-95 transition">
+                            <div class="sd-off absolute inset-0 flex flex-col items-center justify-center gap-2 bg-slate-800/70 rounded-xl border border-slate-700/80 shadow-lg">
+                                <div class="w-[88px] h-[88px] rounded-full bg-slate-700/60 flex items-center justify-center">
+                                    <i class="ph-fill ph-engine text-[48px] text-slate-400"></i>
+                                </div>
+                                <span class="text-[14px] font-black tracking-widest text-slate-200">SILNIK</span>
+                                <span class="text-[9px] font-bold tracking-widest text-slate-500">WYŁĄCZONY</span>
+                            </div>
+                            <div class="sd-on absolute inset-0 flex-col items-center justify-center gap-2 bg-amber-500/10 rounded-xl border border-amber-500/60 shadow-lg">
+                                <div class="w-[88px] h-[88px] rounded-full bg-amber-500/20 flex items-center justify-center">
+                                    <i class="ph-fill ph-engine text-[48px] text-amber-400"></i>
+                                </div>
+                                <span class="text-[14px] font-black tracking-widest text-white">SILNIK</span>
+                                <span class="text-[9px] font-bold tracking-widest text-amber-400">WŁĄCZONY</span>
+                            </div>
+                        </button>
+                        <button id="siren-btn" class="flex-1 h-full rounded-xl relative overflow-hidden active:scale-95 transition">
+                            <div class="sd-off absolute inset-0 flex flex-col items-center justify-center gap-2 bg-slate-800/70 rounded-xl border border-slate-700/80 shadow-lg">
+                                <div class="w-[88px] h-[88px] rounded-full bg-slate-700/60 flex items-center justify-center">
+                                    <i class="ph-fill ph-siren text-[48px] text-slate-400"></i>
+                                </div>
+                                <span class="text-[14px] font-black tracking-widest text-slate-200">SYRENA</span>
+                                <span class="text-[9px] font-bold tracking-widest text-slate-500">WYŁĄCZONY</span>
+                            </div>
+                            <div class="sd-on absolute inset-0 flex-col items-center justify-center gap-2 bg-red-500/10 rounded-xl border border-red-500/60 shadow-lg">
+                                <div class="w-[88px] h-[88px] rounded-full bg-red-500/20 flex items-center justify-center">
+                                    <i class="ph-fill ph-siren text-[48px] text-red-400"></i>
+                                </div>
+                                <span class="text-[14px] font-black tracking-widest text-white">SYRENA</span>
+                                <span class="text-[9px] font-bold tracking-widest text-red-400">WŁĄCZONY</span>
+                            </div>
+                        </button>
+                    </div>
+                </div>
+
             </div>
         </div>
     </div>
@@ -1087,6 +1134,24 @@
             acBtn.classList.toggle('border-slate-700');
         });
 
+        // --- Dźwięki samochodu ---
+        // carhmi ustawia `engine` i `siren` (1: słychać, 0: nie); przyciski tylko mówią, co zrobiono: engine, siren
+        // (przełącz). Silnik odpala razem z carhmi, muzyka rusza, gdy zaskoczy i się ustabilizuje.
+        dmod.prop('engine', 0);
+        dmod.prop('siren', 0);
+        const engineBtn = document.getElementById('engine-btn');
+        const sirenBtn = document.getElementById('siren-btn');
+
+        function showSounds() {
+            if (dmod.get('engine') > 0) engineBtn.classList.add('on'); else engineBtn.classList.remove('on');
+            if (dmod.get('siren') > 0) sirenBtn.classList.add('on'); else sirenBtn.classList.remove('on');
+        }
+
+        dmod.onchange('engine', showSounds);
+        dmod.onchange('siren', showSounds);
+        engineBtn.addEventListener('click', () => dmod.emit('engine'));
+        sirenBtn.addEventListener('click', () => dmod.emit('siren'));
+        showSounds();
     </script>
 </body>
 </html>
