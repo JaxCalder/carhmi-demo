@@ -104,6 +104,10 @@
         .vi-off { display: none; }
         .muted .vi-off { display: flex; }
         .muted .vi-on { display: none; }
+        /* Wyjście: głośnik albo słuchawki / line out do wzmacniacza (.hp na przycisku) */
+        .oi-hp { display: none; }
+        .hp .oi-hp { display: flex; }
+        .hp .oi-sp { display: none; }
 
                 /* Ukrycie paska przewijania (dla pewności) */
         ::-webkit-scrollbar {
@@ -145,7 +149,12 @@
             </div>
 
             <!-- Panel głośności: pod ikoną, znika po 3 s bez dotyku -->
-            <div id="vol-panel" class="vol-panel absolute top-[28px] right-2 w-[300px] h-[56px] px-2 gap-1.5 flex items-center bg-slate-900/95 rounded-xl border border-slate-600/60 shadow-lg z-40 backdrop-blur-md">
+            <div id="vol-panel" class="vol-panel absolute top-[28px] right-2 w-[350px] h-[56px] px-2 gap-1.5 flex items-center bg-slate-900/95 rounded-xl border border-slate-600/60 shadow-lg z-40 backdrop-blur-md">
+                <!-- Wyjście: dotknięcie przełącza między głośnikiem a słuchawkami (line out) -->
+                <button id="vol-out" class="w-11 h-11 rounded-lg bg-slate-800 flex items-center justify-center active:scale-90 transition">
+                    <span class="oi-sp flex"><i class="ph-fill ph-speaker-hifi text-xl text-slate-200"></i></span>
+                    <span class="oi-hp"><i class="ph-fill ph-headphones text-xl text-sky-400"></i></span>
+                </button>
                 <button id="vol-mute" class="w-11 h-11 rounded-lg bg-slate-800 flex items-center justify-center active:scale-90 transition">
                     <span class="vi-on flex"><i class="ph-fill ph-speaker-high text-xl text-slate-200"></i></span>
                     <span class="vi-off"><i class="ph-fill ph-speaker-x text-xl text-red-400"></i></span>
@@ -989,17 +998,20 @@
         showBar();
 
         // --- Głośność ---
-        // carhmi ustawia `volume` (0-100) i `muted` (0/1); panel tylko mówi, co zrobiono: volume (nowa wartość), mute
+        // carhmi ustawia `volume` (0-100), `muted` (0/1) i `headphones` (1: słuchawki / line out, 0: głośnik);
+        // panel tylko mówi, co zrobiono: volume (nowa wartość), mute, output (przełącz wyjście)
         const VOLUME_STEP = 10;
         const PANEL_SECONDS = 3;
         dmod.prop('volume', 60);
         dmod.prop('muted', 0);
+        dmod.prop('headphones', 0);
         const volPanel = document.getElementById('vol-panel');
         const volText = document.getElementById('vol-text');
         let panelIdle = 0;
 
         const volBtn = document.getElementById('vol-btn');
         const volMute = document.getElementById('vol-mute');
+        const volOut = document.getElementById('vol-out');
 
         function showVolume() {
             volText.innerText = '' + dmod.get('volume');
@@ -1010,6 +1022,7 @@
                 volBtn.classList.remove('muted');
                 volMute.classList.remove('muted');
             }
+            if (dmod.get('headphones') > 0) volOut.classList.add('hp'); else volOut.classList.remove('hp');
         }
 
         function openPanel() {
@@ -1027,11 +1040,16 @@
 
         dmod.onchange('volume', showVolume);
         dmod.onchange('muted', showVolume);
+        dmod.onchange('headphones', showVolume);
         document.getElementById('vol-btn').addEventListener('click', () => {
             if (volPanel.classList.contains('open')) volPanel.classList.remove('open'); else openPanel();
         });
         document.getElementById('vol-down').addEventListener('click', () => stepVolume(-VOLUME_STEP));
         document.getElementById('vol-up').addEventListener('click', () => stepVolume(VOLUME_STEP));
+        volOut.addEventListener('click', () => {
+            openPanel();
+            dmod.emit('output');
+        });
         document.getElementById('vol-mute').addEventListener('click', () => {
             openPanel();
             dmod.emit('mute');

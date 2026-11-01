@@ -2,6 +2,7 @@
 #include "dmosi.h"
 #include "libdmview.h"
 #include "libsystemd.h"
+#include "libdmaudio.h"
 #include "player.h"
 #include "local_time.h"
 #include "volume.h"
@@ -25,8 +26,9 @@
  * and takes what was done - the events toggle, next, prev, select (a row),
  * scroll and jump. And the time: clock, "HH:MM" of dmutc's UTC in Polish time
  * (local_time.c), "--:--" while there is no RTC. And the volume (volume.c):
- * the properties volume (0 - 100) and muted (0 / 1), the events volume (the
- * new level) and mute. And the album covers (covers.c): the properties cover
+ * the properties volume (0 - 100), muted (0 / 1) and headphones (1: the
+ * output is the headphones / the line out, 0: the speaker), the events volume
+ * (the new level), mute and output (switch the output). And the album covers (covers.c): the properties cover
  * (the playing track's) and rowN.cover name the images the view shows - a
  * cover once it is made, else the view's own; what to make the view says
  * (cover.sizes, row0.cover.sizes); covers.done of covers.total tracks are
@@ -159,17 +161,22 @@ typedef struct
 {
     int32_t     level;          /* -1: not shown yet */
     int32_t     muted;
+    int32_t     headphones;
 } volume_shown_t;
 
 static void show_volume(uint32_t claim, volume_t v, volume_shown_t* shown)
 {
     int32_t level = volume_level(v), muted = volume_muted(v) ? 1 : 0;
+    int32_t headphones = (volume_output(v) == DMDRVI_AUDIO_OUTPUT_HEADPHONE) ? 1 : 0;
     if (level != shown->level)
         (void)libdmview_prop_set_int(claim, "volume", level);
     if (muted != shown->muted)
         (void)libdmview_prop_set_int(claim, "muted", muted);
+    if (headphones != shown->headphones)
+        (void)libdmview_prop_set_int(claim, "headphones", headphones);
     shown->level = level;
     shown->muted = muted;
+    shown->headphones = headphones;
 }
 
 /* What the view says about the volume: true when the event was one of them */
@@ -179,6 +186,8 @@ static bool handle_volume(volume_t v, const libdmview_event_t* ev)
         volume_set(v, ev->value);
     else if (strcmp(ev->name, "mute") == 0)
         volume_toggle_mute(v);
+    else if (strcmp(ev->name, "output") == 0)
+        volume_toggle_output(v);
     else
         return false;
     return true;
@@ -481,7 +490,7 @@ int main(int argc, char* argv[])
             covers_shown_t covers;
             (void)start_covers(claim, p, dir, &covers);
             volume_t volume = volume_new(dir);
-            volume_shown_t volume_shown = { -1, -1 };
+            volume_shown_t volume_shown = { -1, -1, -1 };
             bool volume_logged = false;
             playstate_t resume = playstate_new(dir);
             const char* file = NULL;
