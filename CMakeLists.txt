@@ -97,7 +97,7 @@ dmod_link_modules(${DMOD_MODULE_NAME}
     libdmview@>=0.10
     libsystemd
     dmmp3@>=0.1
-    libdmaudio@>=0.1
+    libdmaudio@>=0.3
     dmlist
     dmutc
     dmimg

@@ -12,6 +12,11 @@
  * The device may not be there yet when carhmi starts (its service starts
  * together with this one): volume_poll() sets it as soon as it can. The
  * file is written a while after the last change, not at every tap.
+ *
+ * And the output the device plays through - the speaker or the headphones
+ * (the line out to an amplifier): what the device says it is, switched by a
+ * tap; the choice is kept in a file `.output` and set again at the start
+ * (without one the device keeps the output its service was started with).
  */
 
 /** Volume at the first start */
@@ -44,8 +49,14 @@ void volume_set(volume_t v, int32_t level);
 /** @brief Mute, or turn the sound on */
 void volume_toggle_mute(volume_t v);
 
+/** @brief The output the device plays through (a dmdrvi_audio_output_t), -1: not known yet */
+int32_t volume_output(volume_t v);
+
+/** @brief Switch between the speaker and the headphones (nothing while the output is not known) */
+void volume_toggle_output(volume_t v);
+
 /**
- * @brief Do what is due: set the device, write the file
+ * @brief Do what is due: set the device, write the file, read the output back
  *
  * @param now Dmod_GetUptime(): when it is called
  *
