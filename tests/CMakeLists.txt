@@ -11,6 +11,8 @@ dmod_add_test(${DMOD_MODULE_NAME} ${DMOD_MODULE_VERSION}
     ../src/covers.c
     ../src/playstate.c
     ../src/player.c
+    ../src/sfx_synth.c
+    ../src/sfx.c
 )
 target_include_directories(${DMOD_MODULE_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
 

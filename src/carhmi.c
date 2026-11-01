@@ -8,6 +8,7 @@
 #include "volume.h"
 #include "covers.h"
 #include "playstate.h"
+#include "sfx.h"
 #include <errno.h>
 #include <string.h>
 
@@ -28,7 +29,9 @@
  * (local_time.c), "--:--" while there is no RTC. And the volume (volume.c):
  * the properties volume (0 - 100), muted (0 / 1) and headphones (1: the
  * output is the headphones / the line out, 0: the speaker), the events volume
- * (the new level), mute and output (switch the output). And the album covers (covers.c): the properties cover
+ * (the new level), mute and output (switch the output). The sounds of the car (sfx.c): the engine is started with
+ * carhmi - the music starts when it has caught and settled - and the properties engine and siren (1: heard, 0: not)
+ * with the events of the same names, which switch them. And the album covers (covers.c): the properties cover
  * (the playing track's) and rowN.cover name the images the view shows - a
  * cover once it is made, else the view's own; what to make the view says
  * (cover.sizes, row0.cover.sizes); covers.done of covers.total tracks are
@@ -65,6 +68,7 @@
 #define PROP_TEXT       256u            /* Bytes of a property's text read from the view, at most */
 #define COVER_PLACES    (ROWS + 1u)     /* The playing track's cover, the rows' */
 #define NOT_SHOWN       0xFFFFFFFFu
+#define MUSIC_WAIT_MS   6000u           /* At most: the music waits for the engine's start this long (no audio device: it never ends) */
 
 /*
  * The view, when none is given: the firmware's (DEFAULT_VIEW), else the one on a
@@ -409,6 +413,38 @@ static void show_covers(uint32_t claim, player_t p, const shown_t* v, covers_sho
     }
 }
 
+/* The sounds of the car, as the view shows them */
+typedef struct
+{
+    int32_t engine;
+    int32_t siren;
+} sfx_shown_t;
+
+/* The view's engine and siren buttons; true: it was one of them */
+static bool handle_sfx(sfx_t sfx, const libdmview_event_t* ev)
+{
+    if (strcmp(ev->name, "engine") == 0)
+        sfx_engine_set(sfx, !sfx_engine_wanted(sfx));
+    else if (strcmp(ev->name, "siren") == 0)
+        sfx_siren_set(sfx, !sfx_siren_wanted(sfx));
+    else
+        return false;
+    return true;
+}
+
+/* engine and siren (1: heard), set when they changed */
+static void show_sfx(uint32_t claim, sfx_t sfx, sfx_shown_t* shown)
+{
+    int32_t engine = sfx_engine_wanted(sfx) ? 1 : 0;
+    int32_t siren = sfx_siren_wanted(sfx) ? 1 : 0;
+    if (engine != shown->engine)
+        (void)libdmview_prop_set_int(claim, "engine", engine);
+    if (siren != shown->siren)
+        (void)libdmview_prop_set_int(claim, "siren", siren);
+    shown->engine = engine;
+    shown->siren = siren;
+}
+
 /* What was done in the view */
 static void handle(uint32_t claim, player_t p, const libdmview_event_t* ev, shown_t* v)
 {
@@ -424,6 +460,22 @@ static void handle(uint32_t claim, player_t p, const libdmview_event_t* ev, show
         show_window(claim, p, v, (int64_t)v->first + ev->value);     /* The list at an end: more of it */
     else if (strcmp(ev->name, "jump") == 0 && v->shown)
         show_window(claim, p, v, (int64_t)ev->value - (int64_t)LEAD); /* The position bar dragged: that track, at the top */
+}
+
+/* Where it was in the music (playstate.c), else the first track */
+static void start_music(player_t p, playstate_t resume)
+{
+    const char* file = NULL;
+    uint32_t position_ms = 0;
+    bool playing = true;
+    int32_t start = -1;
+    if (playstate_saved(resume, &file, &position_ms, &playing) && (start = player_find(p, file)) >= 0)
+    {
+        DMOD_LOG_INFO("carhmi: on with %s at %u s\n", file, (unsigned)(position_ms / 1000u));
+        player_play_at(p, (uint32_t)start, position_ms, playing);
+    }
+    else if (player_count(p) > 0)
+        player_play(p, 0);
 }
 
 int main(int argc, char* argv[])
@@ -475,6 +527,10 @@ int main(int argc, char* argv[])
         }
         if (ret == 0)
         {
+            /* The engine is started first: the music begins when it has caught and settled */
+            sfx_t sfx = sfx_new();
+            sfx_engine_set(sfx, true);
+            sfx_shown_t sfx_shown = { -1, -1 };
             char dir[128];
             if (argc > 3 && argv[3][0] != '\0')
                 Dmod_SnPrintf(dir, sizeof(dir), "%s", argv[3]);
@@ -493,17 +549,8 @@ int main(int argc, char* argv[])
             volume_shown_t volume_shown = { -1, -1, -1 };
             bool volume_logged = false;
             playstate_t resume = playstate_new(dir);
-            const char* file = NULL;
-            uint32_t position_ms = 0;
-            bool playing = true;
-            int32_t start = -1;
-            if (p != NULL && playstate_saved(resume, &file, &position_ms, &playing) && (start = player_find(p, file)) >= 0)
-            {
-                DMOD_LOG_INFO("carhmi: on with %s at %u s\n", file, (unsigned)(position_ms / 1000u));
-                player_play_at(p, (uint32_t)start, position_ms, playing);
-            }
-            else if (p != NULL && player_count(p) > 0)
-                player_play(p, 0);
+            bool music_started = false;
+            Dmod_Timestamp_t began = Dmod_GetUptime();
             while (!libsystemd_stop_requested())
             {
                 libdmview_event_t ev;
@@ -512,9 +559,19 @@ int main(int argc, char* argv[])
                     break;                      /* (the claim is gone - the display with it) */
                 show_clock(claim, &wall);
                 bool taken = false;
+                if (!music_started && p != NULL && (sfx_engine_started(sfx) || Dmod_GetUptime() - began >= MUSIC_WAIT_MS))
+                {
+                    start_music(p, resume);
+                    music_started = true;
+                }
+                if (sfx != NULL)
+                {
+                    taken = got == 0 && handle_sfx(sfx, &ev);
+                    show_sfx(claim, sfx, &sfx_shown);
+                }
                 if (volume != NULL)
                 {
-                    taken = got == 0 && handle_volume(volume, &ev);
+                    taken = taken || (got == 0 && handle_volume(volume, &ev));
                     if (volume_poll(volume, Dmod_GetUptime()) && !volume_logged)
                     {
                         DMOD_LOG_INFO("carhmi: volume %u%% set\n", (unsigned)volume_level(volume));
@@ -535,9 +592,11 @@ int main(int argc, char* argv[])
             }
             /* The threads are asked to stop all at once, then waited for: the waits overlap (the covers' one
              * finishes the cover it is on, the tags' one the file it reads) */
+            sfx_stop(sfx);
             covers_stop(covers.covers);
             player_stop(p);
             stop_covers(&covers);
+            sfx_free(sfx);
             playstate_free(resume);
             volume_free(volume);
             player_free(p);
