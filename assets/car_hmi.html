@@ -64,14 +64,19 @@
             opacity: 1;
         }
 
-        /* Animacja trójwymiarowej siatki mapy */
-        @keyframes drive {
-            from { background-position: 0 0, 0 0; }
-            to { background-position: 0 30px, 0 30px; }
-        }
-        .map-grid {
-            animation: drive 1s linear infinite;
-        }
+        /* The map is a schematic demo, rendered locally without network access.
+           Constant transforms compile to native DMV group animations. */
+        .nav-map { position:absolute; width:700px; height:640px; left:-110px; top:-332px;
+                   transition:transform 5s linear; pointer-events:none; }
+        .nav-map-wide { width:560px; height:512px; left:-50px; top:-230px; opacity:0; }
+        #view-nav { touch-action:none; }
+        .nav-map img { position:absolute; inset:0; width:100%; height:100%; }
+        .nav-night { opacity:0; }
+        .nav-car-direction { position:absolute; inset:0; }
+        #nav-car-east { opacity:0; }
+        .nav-control { width:34px; height:34px; border-radius:17px; background:#172733;
+                       color:#dce9f5; display:flex; align-items:center; justify-content:center; }
+        .nav-control:active { background:#30567b; }
 
         /* Wiersze kolejki: grający (row-active), a w nim słupki EQ */
         .row { border-color: transparent; }
@@ -177,10 +182,10 @@
 
             <!-- Menu boczne (Sidebar) -->
             <nav class="absolute top-[24px] left-0 w-[50px] h-[248px] bg-slate-900/95 flex flex-col justify-evenly items-center py-1 border-r border-slate-700/50 z-20 backdrop-blur-md">
-                <button class="nav-btn active w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-300 relative text-white bg-slate-700/50 shadow-inner" data-target="home">
+                <button class="nav-btn w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-300 relative text-slate-400" data-target="home">
                     <i class="ph-bold ph-squares-four text-xl"></i>
                 </button>
-                <button class="nav-btn w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-300 relative text-slate-400 hover:text-slate-200" data-target="nav">
+                <button class="nav-btn active w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-300 relative text-white bg-slate-700/50 shadow-inner" data-target="nav">
                     <i class="ph-bold ph-navigation-arrow text-xl"></i>
                 </button>
                 <button class="nav-btn w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-300 relative text-slate-400 hover:text-slate-200" data-target="media">
@@ -198,7 +203,7 @@
             <div class="absolute top-[24px] left-[50px] w-[430px] h-[248px] bg-slate-950 overflow-hidden">
                 
                 <!-- WIDOK: HOME / DASHBOARD -->
-                <div id="view-home" class="view active absolute inset-0 flex w-full h-full p-2.5 gap-2 transition-all duration-300">
+                <div id="view-home" class="view absolute inset-0 flex w-full h-full p-2.5 gap-2 transition-all duration-300">
                     
                     <!-- Lewa Kolumna: Zasięg i Bateria -->
                     <div class="w-1/4 flex flex-col gap-2 justify-center">
@@ -271,57 +276,60 @@
                     </div>
                 </div>
 
-                <!-- WIDOK: NAWIGACJA -->
-                <div id="view-nav" class="view absolute inset-0 w-full h-full overflow-hidden bg-[#050810]">
-                    <!-- Animowana siatka (Grid) perspektywiczna -->
-                    <div class="absolute inset-0 flex justify-center items-end overflow-hidden pointer-events-none z-0">
-                        <div class="w-[800px] h-[600px] origin-bottom map-grid opacity-60" style="
-                            transform: perspective(250px) rotateX(65deg) translateY(80px);
-                            background-image: 
-                                linear-gradient(to right, rgba(236,72,153,0.3) 1px, transparent 1px), 
-                                linear-gradient(to bottom, rgba(236,72,153,0.3) 1px, transparent 1px);
-                            background-size: 30px 30px;
-                        "></div>
+                <!-- WIDOK: NAWIGACJA — schematic streets and a replayed demo route -->
+                <div id="view-nav" class="view active absolute inset-0 w-full h-full overflow-hidden bg-[#e9e7e2]">
+                    <div id="nav-map-near" class="nav-map">
+                        <img src="images/navigation-day.svg" alt="Schemat ulic trasy demonstracyjnej">
+                        <img id="nav-night-near" class="nav-night" src="images/navigation-night.svg" alt="">
+                        <span class="absolute text-[#71818a] font-semibold whitespace-nowrap" style="left:315px;top:472px;font-size:9px">ul. Parkowa</span>
+                        <span class="absolute text-[#71818a] font-semibold whitespace-nowrap" style="left:325px;top:372px;font-size:9px">ul. Zwycięstwa</span>
+                        <span class="absolute text-[#71818a] font-semibold whitespace-nowrap" style="left:438px;top:315px;font-size:9px">ul. Nadbrzeżna</span>
+                        <span class="absolute text-[#71818a] font-semibold whitespace-nowrap" style="left:112px;top:452px;font-size:9px">al. Niepodległości</span>
+                        <span class="absolute text-[#71818a] font-semibold whitespace-nowrap" style="left:106px;top:280px;font-size:9px">Park Miejski</span>
+                        <span class="absolute text-[#71818a] font-semibold whitespace-nowrap" style="left:582px;top:277px;font-size:9px">Bulwary</span>
+                        <span class="absolute text-[#71818a] font-semibold whitespace-nowrap" style="left:332px;top:229px;font-size:9px">CENTRUM</span>
+                        <span class="absolute text-[#71818a] font-semibold whitespace-nowrap" style="left:335px;top:524px;font-size:9px">Parking</span>
                     </div>
-                    <!-- Gradient horyzontu -->
-                    <div class="absolute top-0 left-0 w-full h-24 bg-gradient-to-b from-[#0a0f18] to-transparent z-0"></div>
-                    
-                    <!-- Wektorowa Linia Trasy i ikona pojazdu -->
-                    <svg class="absolute inset-0 w-full h-full drop-shadow-[0_0_8px_rgba(236,72,153,0.8)] z-10" viewBox="0 0 430 248">
-                        <!-- Trasa -->
-                        <path d="M 215,248 C 215,160 270,130 270,70 L 270,40" fill="none" stroke="#ec4899" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
-                        <!-- Cel podróży (kropka) -->
-                        <circle cx="270" cy="40" r="4" fill="#fff" class="drop-shadow-[0_0_5px_rgba(255,255,255,1)]" />
-                        <!-- Pojazd (Trójkąt) -->
-                        <path d="M 207,228 L 223,228 L 215,212 Z" fill="#ec4899" class="drop-shadow-[0_0_5px_rgba(236,72,153,1)]" />
-                    </svg>
-                    
-                    <!-- Wskazówka manewru -->
-                    <div class="absolute top-2 left-2 w-[140px] bg-slate-900/80 backdrop-blur-md rounded-xl p-2 border border-pink-500/30 shadow-[0_4px_15px_rgba(0,0,0,0.5)] z-20">
-                        <div class="flex items-center gap-2">
-                            <i class="ph-bold ph-arrow-u-up-right text-3xl text-pink-500 drop-shadow-[0_0_5px_rgba(236,72,153,0.8)]"></i>
-                            <div>
-                                <div class="text-xs font-bold text-white tracking-wide">300 m</div>
-                                <div class="text-[9px] text-slate-300 truncate">ul. Zwycięstwa</div>
-                            </div>
-                        </div>
+                    <div id="nav-map-wide" class="nav-map nav-map-wide">
+                        <img src="images/navigation-day-wide.svg" alt="">
+                        <img id="nav-night-wide" class="nav-night" src="images/navigation-night-wide.svg" alt="">
+                        <span class="absolute text-[#71818a] font-semibold whitespace-nowrap" style="left:252px;top:377.6px;font-size:7.2px">ul. Parkowa</span>
+                        <span class="absolute text-[#71818a] font-semibold whitespace-nowrap" style="left:260px;top:297.6px;font-size:7.2px">ul. Zwycięstwa</span>
+                        <span class="absolute text-[#71818a] font-semibold whitespace-nowrap" style="left:350.4px;top:252px;font-size:7.2px">ul. Nadbrzeżna</span>
+                        <span class="absolute text-[#71818a] font-semibold whitespace-nowrap" style="left:89.6px;top:361.6px;font-size:7.2px">al. Niepodległości</span>
+                        <span class="absolute text-[#71818a] font-semibold whitespace-nowrap" style="left:84.8px;top:224px;font-size:7.2px">Park Miejski</span>
+                        <span class="absolute text-[#71818a] font-semibold whitespace-nowrap" style="left:465.6px;top:221.6px;font-size:7.2px">Bulwary</span>
+                        <span class="absolute text-[#71818a] font-semibold whitespace-nowrap" style="left:265.6px;top:183.2px;font-size:7.2px">CENTRUM</span>
+                        <span class="absolute text-[#71818a] font-semibold whitespace-nowrap" style="left:268px;top:419.2px;font-size:7.2px">Parking</span>
                     </div>
 
-                    <!-- Pasek informacji o trasie na dole -->
-                    <div class="absolute bottom-2 left-2 right-2 bg-slate-900/85 backdrop-blur-md rounded-lg px-3 py-1.5 border border-slate-700/50 flex justify-between items-center shadow-xl z-20">
-                        <div class="flex items-center gap-5">
-                            <div class="flex flex-col">
-                                <span class="text-green-400 font-bold text-[11px]">14:52</span>
-                                <span class="text-[7px] text-slate-400 uppercase tracking-widest font-semibold">Do celu</span>
-                            </div>
-                            <div class="flex flex-col items-center">
-                                <span class="text-white font-bold text-[11px]">20 min</span>
-                                <span class="text-[7px] text-slate-400 tracking-widest uppercase">14 km</span>
-                            </div>
+                    <div id="nav-car" class="absolute left-[176px] top-[160px] w-[28px] h-[30px] z-10">
+                        <div id="nav-car-north" class="nav-car-direction"><svg width="28" height="30" viewBox="0 0 28 30"><path d="M14 2L25 27L14 22L3 27Z" fill="#4285f4" stroke="white" stroke-width="2.5" stroke-linejoin="round"/></svg></div>
+                        <div id="nav-car-east" class="nav-car-direction"><svg width="28" height="30" viewBox="0 0 28 30"><path d="M26 15L2 4L7 15L2 26Z" fill="#4285f4" stroke="white" stroke-width="2.5" stroke-linejoin="round"/></svg></div>
+                    </div>
+
+                    <div class="absolute top-2 left-2 w-[306px] h-[64px] rounded-xl bg-[#124b3b] flex items-center px-3 gap-3 z-20 shadow-lg">
+                        <span id="nav-turn" class="text-[31px] font-bold text-white w-[30px] text-center">↱</span>
+                        <div class="flex-1 overflow-hidden">
+                            <div id="nav-distance" class="text-left w-[230px] text-[20px] leading-[24px] font-extrabold text-white">300 m</div>
+                            <div id="nav-street" class="text-left w-[230px] text-[11px] font-semibold text-[#d1eee1] whitespace-nowrap">W prawo · ul. Zwycięstwa</div>
                         </div>
-                        <button class="bg-red-500/20 text-red-400 hover:bg-red-500/30 active:scale-95 px-3 py-1 rounded md text-[9px] font-bold transition-all uppercase border border-red-500/30 tracking-wider">
-                            Zakończ
-                        </button>
+                    </div>
+                    <div class="absolute top-2 right-2 px-2 h-[18px] bg-[#172733] rounded-md text-[8px] font-bold tracking-wider text-[#a8c7fa] flex items-center z-20">DEMO</div>
+                    <div class="absolute right-2 top-[34px] flex flex-col gap-1.5 z-20">
+                        <button id="nav-zoom-in" class="nav-control" aria-label="Przybliż mapę"><svg width="18" height="18" viewBox="0 0 18 18"><path d="M9 3V15M3 9H15" fill="none" stroke="#dce9f5" stroke-width="2" stroke-linecap="round"/></svg></button>
+                        <button id="nav-zoom-out" class="nav-control" aria-label="Oddal mapę"><svg width="18" height="18" viewBox="0 0 18 18"><path d="M3 9H15" fill="none" stroke="#dce9f5" stroke-width="2" stroke-linecap="round"/></svg></button>
+                        <button id="nav-recenter" class="nav-control" aria-label="Wyśrodkuj mapę na pojeździe"><svg width="18" height="18" viewBox="0 0 18 18"><circle cx="9" cy="9" r="5" fill="none" stroke="#dce9f5" stroke-width="1.5"/><circle cx="9" cy="9" r="1.5" fill="#8ab4f8"/><path d="M9 1V4M9 14V17M1 9H4M14 9H17" stroke="#dce9f5" stroke-width="1.5"/></svg></button>
+                        <button id="nav-theme" class="nav-control" aria-label="Zmień tryb dzień lub noc"><svg width="18" height="18" viewBox="0 0 18 18"><path d="M14 12A6 6 0 0 1 6 4A6 6 0 1 0 14 12Z" fill="none" stroke="#dce9f5" stroke-width="1.8" stroke-linejoin="round"/></svg></button>
+                    </div>
+                    <div class="absolute left-3 bottom-[60px] flex items-center gap-2 z-20">
+                        <div class="w-[35px] h-[35px] rounded-full bg-white border-[3px] border-[#e65f54] flex items-center justify-center text-[15px] font-bold text-[#202b35]">50</div>
+                        <div class="bg-[#172733] rounded-lg px-2 py-1 flex items-baseline gap-1"><span id="nav-speed" class="text-[17px] font-bold text-white">42</span><span class="w-[22px] flex-none text-[8px] text-[#b8c7d4]">km/h</span></div>
+                    </div>
+                    <div class="absolute bottom-2 left-2 right-2 h-[43px] bg-[#172733] rounded-xl px-3 flex items-center justify-between z-20 shadow-lg">
+                        <div><div id="nav-time" class="text-[16px] font-bold text-[#9fdfad]">2 min</div><div id="nav-remaining" class="text-[9px] text-[#c1ced8]">640 m · do centrum</div></div>
+                        <div id="nav-status" class="text-[9px] text-[#b8c7d4]">Trasa demo</div>
+                        <button id="nav-pause" class="w-[69px] h-[31px] rounded-full bg-[#29465e] text-[#dce9f5] text-[10px] font-bold">Start</button>
                     </div>
                 </div>
 
@@ -778,6 +786,92 @@
                 }
             });
         });
+
+
+        // Navigation replay: north-up map follows a fictional route. No GPS implied.
+        const navNear = document.getElementById('nav-map-near');
+        const navWide = document.getElementById('nav-map-wide');
+        const navNorth = document.getElementById('nav-car-north');
+        const navEast = document.getElementById('nav-car-east');
+        const navDistance = document.getElementById('nav-distance');
+        const navStreet = document.getElementById('nav-street');
+        const navTurn = document.getElementById('nav-turn');
+        const navSpeed = document.getElementById('nav-speed');
+        const navTime = document.getElementById('nav-time');
+        const navRemaining = document.getElementById('nav-remaining');
+        const navStatus = document.getElementById('nav-status');
+        const navPause = document.getElementById('nav-pause');
+        let navStep = 0;
+        let navRunning = 0;
+        let navNight = 0;
+        function navUpdate() {
+            if (navStep >= 4 && navStep < 8) { navNorth.style.opacity = '0'; navEast.style.opacity = '1'; }
+            else { navNorth.style.opacity = '1'; navEast.style.opacity = '0'; }
+            if (navStep === 0) { navNear.style.transform = 'translate(0px, 0px)'; navWide.style.transform = 'translate(0px, 0px)'; }
+            else if (navStep === 1) { navNear.style.transform = 'translate(0px, 30px)'; navWide.style.transform = 'translate(0px, 24px)'; }
+            else if (navStep === 2) { navNear.style.transform = 'translate(0px, 60px)'; navWide.style.transform = 'translate(0px, 48px)'; }
+            else if (navStep === 3) { navNear.style.transform = 'translate(0px, 90px)'; navWide.style.transform = 'translate(0px, 72px)'; }
+            else if (navStep === 4) { navNear.style.transform = 'translate(0px, 120px)'; navWide.style.transform = 'translate(0px, 96px)'; }
+            else if (navStep === 5) { navNear.style.transform = 'translate(-30px, 120px)'; navWide.style.transform = 'translate(-24px, 96px)'; }
+            else if (navStep === 6) { navNear.style.transform = 'translate(-60px, 120px)'; navWide.style.transform = 'translate(-48px, 96px)'; }
+            else if (navStep === 7) { navNear.style.transform = 'translate(-90px, 120px)'; navWide.style.transform = 'translate(-72px, 96px)'; }
+            else if (navStep === 8) { navNear.style.transform = 'translate(-120px, 120px)'; navWide.style.transform = 'translate(-96px, 96px)'; }
+            else if (navStep === 9) { navNear.style.transform = 'translate(-120px, 160px)'; navWide.style.transform = 'translate(-96px, 128px)'; }
+            else if (navStep === 10) { navNear.style.transform = 'translate(-120px, 210px)'; navWide.style.transform = 'translate(-96px, 168px)'; }
+            else if (navStep === 11) { navNear.style.transform = 'translate(-120px, 260px)'; navWide.style.transform = 'translate(-96px, 208px)'; }
+            const turns = ['300 m', '225 m', '150 m', '75 m', 'Skręć teraz', '225 m', '150 m', '75 m', 'Skręć w lewo', '200 m', '100 m', 'Jesteś u celu'];
+            const remaining = [640, 565, 490, 415, 340, 300, 260, 220, 180, 120, 60, 0];
+            const speeds = [42, 43, 40, 31, 22, 35, 39, 28, 19, 34, 25, 0];
+            navDistance.innerText = turns[navStep];
+            navSpeed.innerText = speeds[navStep];
+            navRemaining.innerText = remaining[navStep] + ' m · do centrum';
+            navTime.innerText = navStep < 2 ? '2 min' : '1 min';
+            navStreet.innerText = navStep < 4 ? 'W prawo · ul. Zwycięstwa' : 'W lewo · ul. Nadbrzeżna';
+            navTurn.innerText = navStep < 4 ? '↱' : '↰';
+            if (navStep >= 8) {
+                navStreet.innerText = 'Prosto · centrum';
+                navTurn.innerText = '↑';
+            }
+            if (navStep === 11) {
+                navRunning = 0;
+                navTime.innerText = 'Na miejscu';
+                navStreet.innerText = 'Centrum · koniec trasy demo';
+                navRemaining.innerText = 'Trasa demonstracyjna';
+                navTurn.innerText = '✓';
+                navStatus.innerText = 'Cel osiągnięty';
+                navPause.innerText = 'Od nowa';
+            }
+        }
+        navPause.addEventListener('click', () => {
+            if (navStep === 11) { navStep = 0; navRunning = 1; navUpdate(); }
+            else { navRunning = navRunning ? 0 : 1; }
+            navPause.innerText = navRunning ? 'Pauza' : 'Wznów';
+            navStatus.innerText = navRunning ? 'Przejazd demo' : 'Wstrzymano';
+        });
+        document.getElementById('nav-recenter').addEventListener('click', () => {
+            navUpdate();
+            navPause.innerText = navRunning ? 'Pauza' : 'Wznów';
+            navStatus.innerText = navRunning ? 'Przejazd demo' : 'Trasa demo';
+        });
+        document.getElementById('nav-zoom-in').addEventListener('click', () => {
+            navNear.style.opacity = '1'; navWide.style.opacity = '0';
+        });
+        document.getElementById('nav-zoom-out').addEventListener('click', () => {
+            navNear.style.opacity = '0'; navWide.style.opacity = '1';
+        });
+        const navNightNear = document.getElementById('nav-night-near');
+        const navNightWide = document.getElementById('nav-night-wide');
+        document.getElementById('nav-theme').addEventListener('click', () => {
+            navNight = navNight ? 0 : 1;
+            if (navNight) { navNightNear.style.opacity = '1'; navNightWide.style.opacity = '1'; }
+            else { navNightNear.style.opacity = '0'; navNightWide.style.opacity = '0'; }
+        });
+        setInterval(() => {
+            if (navRunning && document.getElementById('view-nav').classList.contains('active')) {
+                navStep = Math.min(11, navStep + 1);
+                navUpdate();
+            }
+        }, 6000);
 
         // --- 3. Animacja Prędkościomierza na Home ---
         const speedCircle = document.getElementById('speed-active');

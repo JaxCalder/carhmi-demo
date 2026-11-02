@@ -52,3 +52,9 @@ if(DMF_GET_EXECUTABLE AND DMOD_LOADER_EXECUTABLE)
 else()
     message(WARNING "dmf-get/dmod_loader not found - 'ctest' will not run ${DMOD_MODULE_NAME}. Build the tools first with -DDMOD_BUILD_TOOLS=ON")
 endif()
+
+# Off-screen integration test of the compiled navigation view and real contacts.
+set(DMOD_MODULE_NAME test_navigation_input)
+set(DMOD_STACK_SIZE 3072)
+dmod_add_executable(${DMOD_MODULE_NAME} ${PROJECT_VERSION} navigation_input.c)
+dmod_link_modules(${DMOD_MODULE_NAME} libdmview@>=0.15.1 dmdrvi)

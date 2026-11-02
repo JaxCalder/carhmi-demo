@@ -96,7 +96,7 @@ dmod_add_executable(${DMOD_MODULE_NAME} ${DMOD_MODULE_VERSION}
 dmod_link_modules(${DMOD_MODULE_NAME}
     dmdrvi@>=2.7
     dmosi
-    libdmview@>=0.10
+    libdmview@>=0.15.1
     libsystemd
     dmmp3@>=0.1
     libdmaudio@>=0.3
