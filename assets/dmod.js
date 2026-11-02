@@ -147,4 +147,74 @@
             app('progress', Math.floor(props['position'] * 1000 / props['duration']));
         }
     }, 1000);
+
+    // Browser counterpart of assets/navigation-gestures.dmvs. The converter
+    // intentionally excludes this file; the device uses captured DMV contacts.
+    window.addEventListener('DOMContentLoaded', () => {
+        const view = document.getElementById('view-nav');
+        const near = document.getElementById('nav-map-near');
+        const wide = document.getElementById('nav-map-wide');
+        const car = document.getElementById('nav-car');
+        const fingers = new Map();
+        let separation = 0;
+        const scale = () => view.getBoundingClientRect().width / 430;
+        const point = e => { const r = view.getBoundingClientRect(); return { x:(e.clientX-r.left)/scale(), y:(e.clientY-r.top)/scale() }; };
+        const position = e => { const a=e.getBoundingClientRect(), b=view.getBoundingClientRect(); return {x:(a.left-b.left)/scale(),y:(a.top-b.top)/scale()}; };
+        const active = () => getComputedStyle(near).opacity === '0' ? wide : near;
+        function place(e, x, y) {
+            e.style.transition = 'none';
+            e.style.transform = 'translate(' + (x - parseFloat(getComputedStyle(e).left)) + 'px, ' + (y - parseFloat(getComputedStyle(e).top)) + 'px)';
+        }
+        function manual() {
+            navRunning = 0;
+            navPause.innerText = 'Wznów';
+            navStatus.innerText = 'Przegląd mapy';
+        }
+        function move(dx, dy) {
+            const a=active(), p=position(a);
+            dx=Math.max(430-a.clientWidth,Math.min(0,p.x+dx))-p.x;
+            dy=Math.max(248-a.clientHeight,Math.min(0,p.y+dy))-p.y;
+            [near,wide].forEach(e=>{const p=position(e);place(e,p.x+dx,p.y+dy);});
+            car.style.left=(parseFloat(getComputedStyle(car).left)+dx)+'px';
+            car.style.top=(parseFloat(getComputedStyle(car).top)+dy)+'px';
+        }
+        function zoom(close, cx, cy) {
+            const from=active(), to=close?near:wide;
+            if(from===to)return;
+            manual();
+            const factor=close?1.25:0.8, p=position(from);
+            place(to,cx+(p.x-cx)*factor,cy+(p.y-cy)*factor);
+            car.style.left=(cx+(parseFloat(getComputedStyle(car).left)+14-cx)*factor-14)+'px';
+            car.style.top=(cy+(parseFloat(getComputedStyle(car).top)+18-cy)*factor-18)+'px';
+            near.style.opacity=close?'1':'0';wide.style.opacity=close?'0':'1';
+            move(0,0);
+        }
+        function recenter() {
+            car.style.left='176px';car.style.top='160px';
+            near.style.transition='';wide.style.transition='';
+            navUpdate();
+        }
+        [['nav-zoom-in',true],['nav-zoom-out',false]].forEach(([id,close])=>document.getElementById(id).addEventListener('click',e=>{
+            e.stopImmediatePropagation();zoom(close,190,178);
+        },true));
+        document.getElementById('nav-recenter').addEventListener('click',recenter,true);
+        navPause.addEventListener('click',()=>{if(!navRunning)recenter();},true);
+        view.addEventListener('pointerdown',e=>{
+            const p=point(e);
+            if(e.target.closest('button')||p.x>=380||p.y<76||p.y>=194)return;
+            e.preventDefault();view.setPointerCapture(e.pointerId);fingers.set(e.pointerId,p);
+            if(fingers.size===2){const [a,b]=[...fingers.values()];separation=Math.hypot(a.x-b.x,a.y-b.y);}
+        });
+        view.addEventListener('pointermove',e=>{
+            if(!fingers.has(e.pointerId))return;
+            e.preventDefault();const previous=fingers.get(e.pointerId),p=point(e);fingers.set(e.pointerId,p);
+            if(fingers.size===1){manual();move(p.x-previous.x,p.y-previous.y);}
+            else if(fingers.size===2&&separation>0){
+                const [a,b]=[...fingers.values()], ratio=Math.hypot(a.x-b.x,a.y-b.y)/separation;
+                if(ratio>=1.15||ratio<=0.85){zoom(ratio>=1.15,(a.x+b.x)/2,(a.y+b.y)/2);}
+            }
+        });
+        function release(e){fingers.delete(e.pointerId);if(fingers.size===0){separation=0;}}
+        view.addEventListener('pointerup',release);view.addEventListener('pointercancel',release);
+    });
 })();

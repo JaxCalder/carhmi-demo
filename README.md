@@ -51,6 +51,33 @@ google-chrome --headless=new --hide-scrollbars --window-size=512,512 \
 ```
 [docs/view.md](docs/view.md) describes how it becomes a view.
 
+## Navigation demo
+
+The navigation page opens at startup. It shows an original schematic street map,
+a blue route, the next turn, remaining distance and a replayed vehicle position.
+The map follows a 12-step demo route; it is not a live GNSS or Google Maps feed.
+Press Start to begin. The replay advances only while the navigation page is visible and stops at the
+arrival screen. Pause/resume, replay, two zoom levels and day/night maps work
+locally on the device. Drag the map with one finger; pinch with two fingers to switch zoom levels.
+Manual navigation pauses the replay and keeps the vehicle attached to its map
+position. The crosshair returns to the vehicle without restarting the trip;
+resume also recenters. Panning is bounded so the map cannot reveal empty space.
+
+The page scripts compile into DMV timers and group translations. Native
+contact capture and PINCH handlers are in `assets/navigation-gestures.dmvs`;
+`scripts/bind_navigation.py` connects them to the converted named groups and
+fails if the layout changes incompatibly. `assets/dmod.js` provides the browser
+counterpart. `test_navigation_input` exercises the compiled view with real
+renderer input calls in an off-screen buffer (including two contacts). The day/night
+SVGs in `assets/images/navigation-*.svg` contain the map and route; no map tiles,
+network connection or API key are needed. The audio and music controls remain
+available through the sidebar.
+
+The native gestures require `libdmview >= 0.15.1` with second-contact PINCH
+support. Until that renderer is released, build the matching dmview change and
+supply its local package manifest through `-DDMOD_DMM_URL=/path/to/manifest.dmm`.
+The HTML remains the design source; no generated DMV files need manual edits.
+
 ## Building
 
 ```bash
@@ -69,7 +96,7 @@ carhmi-demo/
 ├── assets/
 │   ├── car_hmi.html        # the design
 │   ├── fonts/              # Inter, Phosphor Icons (+ their licenses)
-│   └── images/             # the default cover: cover-default.png, rendered from cover-default.svg
+│   └── images/             # the default cover and the day/night navigation maps
 ├── cmake/carhmi_page.cmake # page -> the view's sources (todmvs)
 ├── configs/carhmi.ini      # the service unit
 ├── dmod-boot/              # flash.dmd and sdcard.dmd to add to dmod-boot
