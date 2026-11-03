@@ -44,14 +44,16 @@ dmod_setup_external_module()
 # too big for a microcontroller's flash, so they are a package of their own
 # (carhmi_view) that goes where the view should be - the SD card.
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/carhmi_page.cmake)
-set(CARHMI_SCREEN           480x272 CACHE STRING "Size of the display the page is laid out for")
-carhmi_convert_page(
-    ${CMAKE_CURRENT_SOURCE_DIR}/assets/car_hmi.html
-    ${CARHMI_SCREEN}
-    hmi-screen                      # the element of the page that is the screen
-    carhmi
-    ${CMAKE_BINARY_DIR}/view-src
-)
+set(DMOD_ASSETS_SCREENS 480x272 320x240)
+foreach(SCREEN IN LISTS DMOD_ASSETS_SCREENS)
+    carhmi_convert_page(
+        ${CMAKE_CURRENT_SOURCE_DIR}/assets/car_hmi.html
+        ${SCREEN}
+        hmi-screen
+        carhmi
+        ${CMAKE_BINARY_DIR}/view-src/${SCREEN}
+    )
+endforeach()
 
 # ======================================================================
 #               carhmi_view - the view (data)
@@ -67,6 +69,21 @@ set(DMOD_MAL_IMPLS          )
 dmod_add_executable(${DMOD_MODULE_NAME} ${DMOD_MODULE_VERSION}
     src/carhmi_view.c
 )
+
+# Preserve the historical host-build path for tools that open the default view.
+# The package still contains only the separate, self-contained variant bundles.
+add_custom_target(carhmi_default_view ALL
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_BINARY_DIR}/views/480x272 ${CMAKE_BINARY_DIR}/views
+    DEPENDS carhmi_view
+    VERBATIM)
+
+# Every normal/release build verifies the contents of the generated ZIP.
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+add_custom_target(check_carhmi_views ALL
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check_view_package.py ${CMAKE_BINARY_DIR}
+    DEPENDS carhmi_view
+    VERBATIM)
 
 # ======================================================================
 #               carhmi - the application (the service)

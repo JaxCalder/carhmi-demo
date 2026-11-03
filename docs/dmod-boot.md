@@ -35,6 +35,22 @@ The board needs a display (and a touch panel for the buttons) in a
 dmod-boot's own configuration of it already includes carhmi (see its README),
 so these files are for other boards.
 
+## Selecting the screen
+
+The same `carhmi_view` package contains both resolutions. In a board's sdcard
+manifest use:
+
+```dmd
+carhmi_view @screen 320x240
+```
+
+Use 480x272 for STM32F746G-DISCO. dmod-boot can also pass a board-wide default
+with `-DDMBOOT_SCREEN=320x240`; an entry's `@screen` overrides that default.
+Selection applies to flash, external-flash and SD-card installations. The
+installer must support `--screen` and the new DMR attributes. All variants are
+in one ZIP, but only the selected bundle is installed. The existing carhmi
+service and its view path stay the same for both resolutions.
+
 ## The view on the card
 
 dmf-get installs the view to `build/sdcard/views/carhmi_view/`. Copy it to a

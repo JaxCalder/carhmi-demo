@@ -3,7 +3,7 @@
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/choco-technologies/carhmi-demo/actions/workflows/ci.yml/badge.svg)](https://github.com/choco-technologies/carhmi-demo/actions/workflows/ci.yml)
 
-A car dashboard (HMI) for a 480 x 272 display - an example of how easily a
+A car dashboard (HMI) for 480 x 272 and 320 x 240 displays - an example of how easily a
 dmodOS application gets a GUI: the interface is **one HTML page**
 ([assets/car_hmi.html](assets/car_hmi.html)), made with Tailwind CSS and
 JavaScript, with no code of its own for the screen.
@@ -18,7 +18,7 @@ only claims the display for the view.
 | Module | Kind | What it is |
 |--------|------|------------|
 | `carhmi` | Application (service) | Claims the display for the view while it runs, plays the MP3 files of the SD card |
-| `carhmi_view` | Data | The view: `carhmi.dmv` with its fonts (`.dmvf`) and images (`.dmvi`) |
+| `carhmi_view` | Data | Both resolutions of `carhmi.dmv`, each with its fonts (`.dmvf`) and images (`.dmvi`) |
 
 The view is a package of its own, as it is too big for a microcontroller's
 flash: it goes to the SD card.
@@ -84,6 +84,30 @@ The HTML remains the design source; no generated DMV files need manual edits.
 cmake -S . -B build -DDMOD_TOOLS_NAME=arch/armv7/cortex-m7
 cmake --build build
 ```
+
+Every build, including release builds for each architecture, generates both
+resolutions in one `carhmi_view.zip` with one unchanged module binary:
+
+```text
+views/480x272/carhmi.dmv + fonts/images
+views/320x240/carhmi.dmv + fonts/images
+```
+
+Install a variant with a screen-aware `dmf-get`:
+
+```bash
+mkdir -p build/sdcard/bin build/sdcard/views
+dmf-get install carhmi_view --screen 320x240 -t arch/armv7/cortex-m7 -y \
+    -o build/sdcard/bin --views-dir build/sdcard/views
+```
+
+Or select it in a board's `.dmd`: `carhmi_view @screen 320x240`. The installer
+copies only that bundle into `views/carhmi_view/`, so the application keeps the
+same path. Screen selectors are opaque, case-sensitive variant identifiers;
+for other interfaces names such as `epaper` or `epaper-mono` are valid too.
+480x272 is this package's default. An explicit unsupported resolution
+fails with the available choices. Older installers ignore the new `.dmr`
+attributes: upgrade `dmf-get` before installing a package with screen variants.
 
 The build downloads `todmvs` (and the converters it loads) with `dmf-get`, so
 it needs `dmf-get` and `dmod_loader`. Pass `-DDMOD_DIR=/path/to/local/dmod`

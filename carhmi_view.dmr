@@ -8,7 +8,10 @@ dmd=./${module}.dmd => ${destination}/${module}.dmd [origin=${dmf_dir}/${module}
 version=./${module}_version.txt => ${destination}/${module}_version.txt [origin=${dmf_dir}/${module}_version.txt]
 
 # === The view, its fonts and images (converted from assets/car_hmi.html), with the fonts' licenses ===
-views=./views => ${views_dir} [origin=${views_dir}] [origin=${repo_dir}/assets/fonts/LICENSE-Inter.txt] [origin=${repo_dir}/assets/fonts/LICENSE-Phosphor.txt]
+views=./views/480x272 => ${views_dir} [screen=480x272] [default=true] [origin=${views_dir}/480x272]
+views=./views/320x240 => ${views_dir} [screen=320x240] [origin=${views_dir}/320x240]
+license=./LICENSE-Inter.txt => ${destination}/${module}/LICENSE-Inter.txt [origin=${repo_dir}/assets/fonts/LICENSE-Inter.txt]
+license=./LICENSE-Phosphor.txt => ${destination}/${module}/LICENSE-Phosphor.txt [origin=${repo_dir}/assets/fonts/LICENSE-Phosphor.txt]
 
 # === License ===
 license=./LICENSE => ${destination}/${module}/LICENSE [origin=${repo_dir}/LICENSE]

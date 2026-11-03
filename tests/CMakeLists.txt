@@ -58,3 +58,21 @@ set(DMOD_MODULE_NAME test_navigation_input)
 set(DMOD_STACK_SIZE 3072)
 dmod_add_executable(${DMOD_MODULE_NAME} ${PROJECT_VERSION} navigation_input.c)
 dmod_link_modules(${DMOD_MODULE_NAME} libdmview@>=0.15.1 dmdrvi)
+
+if(DMF_GET_EXECUTABLE AND DMOD_LOADER_EXECUTABLE)
+    set(NAVIGATION_MANIFEST_ARGS "")
+    if(DMOD_DMM_URL)
+        list(APPEND NAVIGATION_MANIFEST_ARGS -m "${DMOD_DMM_URL}")
+    endif()
+    add_test(NAME test_navigation_dependencies
+        COMMAND ${CMAKE_COMMAND} -E env DMOD_DMF_DIR=${DMOD_DMF_DIR}
+            ${DMF_GET_EXECUTABLE} install libdmview@>=0.15.1 -y ${NAVIGATION_MANIFEST_ARGS})
+    set_tests_properties(test_navigation_dependencies PROPERTIES FIXTURES_SETUP navigation)
+    foreach(SCREEN IN ITEMS 480x272 320x240)
+        add_test(NAME test_navigation_${SCREEN}
+            COMMAND ${CMAKE_COMMAND} -E env DMOD_DMF_DIR=${DMOD_DMF_DIR}
+                ${DMOD_LOADER_EXECUTABLE} ${DMOD_DMF_DIR}/test_navigation_input.dmf
+                --args ${CMAKE_BINARY_DIR}/views/${SCREEN}/carhmi.dmv)
+        set_tests_properties(test_navigation_${SCREEN} PROPERTIES FIXTURES_REQUIRED navigation)
+    endforeach()
+endif()
