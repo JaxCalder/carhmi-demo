@@ -1,13 +1,13 @@
 ; Native touch bindings. HTML converter compiles clicks, this layer adds
 ; captured contacts and two-finger gestures using dmview's standard input API.
-.var $navg_car_x, int, 176
-.var $navg_car_y, int, 160
+.var $navg_car_x, int, @CAR_X@
+.var $navg_car_y, int, @CAR_Y@
 .var $navg_dx, int, 0
 .var $navg_dy, int, 0
 .var $navg_x, int, 0
 .var $navg_y, int, 0
-.var $navg_cx, int, 190
-.var $navg_cy, int, 178
+.var $navg_cx, int, @CENTER_X@
+.var $navg_cy, int, @CENTER_Y@
 
 navg_press:
         RET
@@ -34,21 +34,21 @@ navg_move:
         JEQ $nav_map_near_alpha, 0, .wide
         SET $navg_x, $nav_map_near_x
         ADD $navg_x, $navg_dx
-        CLAMP $navg_x, -270, 0
+        CLAMP $navg_x, @NEAR_MIN_X@, 0
         SUB $navg_x, $nav_map_near_x
         SET $navg_y, $nav_map_near_y
         ADD $navg_y, $navg_dy
-        CLAMP $navg_y, -392, 0
+        CLAMP $navg_y, @NEAR_MIN_Y@, 0
         SUB $navg_y, $nav_map_near_y
         JMP .apply
 .wide:
         SET $navg_x, $nav_map_wide_x
         ADD $navg_x, $navg_dx
-        CLAMP $navg_x, -130, 0
+        CLAMP $navg_x, @WIDE_MIN_X@, 0
         SUB $navg_x, $nav_map_wide_x
         SET $navg_y, $nav_map_wide_y
         ADD $navg_y, $navg_dy
-        CLAMP $navg_y, -264, 0
+        CLAMP $navg_y, @WIDE_MIN_Y@, 0
         SUB $navg_y, $nav_map_wide_y
 .apply:
         ADD $nav_map_near_x, $navg_x
@@ -59,13 +59,13 @@ navg_move:
         ADD $navg_car_y, $navg_y
         RET
 navg_zoom_in:
-        SET $navg_cx, 190
-        SET $navg_cy, 178
+        SET $navg_cx, @CENTER_X@
+        SET $navg_cy, @CENTER_Y@
         CALL navg_near
         RET
 navg_zoom_out:
-        SET $navg_cx, 190
-        SET $navg_cy, 178
+        SET $navg_cx, @CENTER_X@
+        SET $navg_cy, @CENTER_Y@
         CALL navg_wide
         RET
 navg_near:
@@ -107,32 +107,32 @@ navg_wide:
 .done:
         RET
 navg_scale_car_up:
-        ADD $navg_car_x, 14
+        ADD $navg_car_x, @CAR_CX@
         SUB $navg_car_x, $navg_cx
         MUL $navg_car_x, 5
         DIV $navg_car_x, 4
         ADD $navg_car_x, $navg_cx
-        SUB $navg_car_x, 14
-        ADD $navg_car_y, 18
+        SUB $navg_car_x, @CAR_CX@
+        ADD $navg_car_y, @CAR_CY@
         SUB $navg_car_y, $navg_cy
         MUL $navg_car_y, 5
         DIV $navg_car_y, 4
         ADD $navg_car_y, $navg_cy
-        SUB $navg_car_y, 18
+        SUB $navg_car_y, @CAR_CY@
         RET
 navg_scale_car_down:
-        ADD $navg_car_x, 14
+        ADD $navg_car_x, @CAR_CX@
         SUB $navg_car_x, $navg_cx
         MUL $navg_car_x, 4
         DIV $navg_car_x, 5
         ADD $navg_car_x, $navg_cx
-        SUB $navg_car_x, 14
-        ADD $navg_car_y, 18
+        SUB $navg_car_x, @CAR_CX@
+        ADD $navg_car_y, @CAR_CY@
         SUB $navg_car_y, $navg_cy
         MUL $navg_car_y, 4
         DIV $navg_car_y, 5
         ADD $navg_car_y, $navg_cy
-        SUB $navg_car_y, 18
+        SUB $navg_car_y, @CAR_CY@
         RET
 navg_clamp:
         SET $navg_dx, 0
@@ -142,7 +142,7 @@ navg_clamp:
 navg_pinch:
         SET $navg_cx, $ev.cx
         SET $navg_cy, $ev.cy
-        ADD $navg_cy, 76
+        ADD $navg_cy, @TOUCH_TOP@
         JGE $ev.scale, 1150, .in
         JGT $ev.scale, 850, .done
         CALL navg_wide
@@ -152,8 +152,8 @@ navg_pinch:
 .done:
         RET
 navg_recenter:
-        SET $navg_car_x, 176
-        SET $navg_car_y, 160
+        SET $navg_car_x, @CAR_X@
+        SET $navg_car_y, @CAR_Y@
         CALL @RECENTER_HANDLER@
         RET
 navg_pause:

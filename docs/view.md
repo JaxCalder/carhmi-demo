@@ -8,7 +8,9 @@ assets/car_hmi.html ──(todmvs: dmvs_html + dmvs_js)──► carhmi.dmvs + f
 [cmake/carhmi_page.cmake](../cmake/carhmi_page.cmake) downloads `todmvs` with
 `dmf-get` and converts the page when CMake configures (the sources have to
 exist when dmod looks for assets). The element `hmi-screen` is the screen; the
-page is laid out for `CARHMI_SCREEN` (480x272). dmod's assets step then makes
+page is laid out twice, at 480x272 and 320x240. Compact CSS rearranges the
+same controls and scripts; `bind_navigation.py` derives map gesture geometry
+from each converted layout. dmod's assets step then makes
 the view, the fonts (only the characters the view draws) and the images (at
 the sizes it draws them).
 
@@ -28,3 +30,17 @@ tools support (see dmvs_html and dmvs_js):
 
 What the converter cannot do is reported as warnings while the page is
 converted (`todmvs` without `-q`).
+
+## Screen variants
+
+CMake generates `view-src/<screen>/carhmi.dmvs` and the resources next to it,
+then DMOD's `DMOD_ASSETS_SCREENS` converts each bundle into `views/<screen>/`.
+The existing `carhmi_view` package contains both bundles and a single module
+binary. Its `.dmr` declares `[screen=480x272] [default=true]` and `[screen=320x240]`.
+Release builds use the same path, so every architecture ships both resolutions.
+
+A screen-aware `dmf-get` chooses resources through `--screen 320x240` or a `.dmd`
+entry `carhmi_view @screen 320x240`. Both install as `views/carhmi_view/carhmi.dmv`
+with the selected bundle's fonts/images. There is no resolution-specific module
+name, registry entry or application argument. An explicit unsupported screen
+fails; without a selector the 480x272 default is installed.

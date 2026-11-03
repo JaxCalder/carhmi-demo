@@ -15,7 +15,7 @@ include(FetchContent)
 FetchContent_Declare(
     dmod
     GIT_REPOSITORY https://github.com/choco-technologies/dmod.git
-    GIT_TAG        develop
+    GIT_TAG        df64c1855dbbbe40d9f15e11a44a1f974cd8e565 # SDK screen variants
 )
 
 set(DMOD_MODE "DMOD_MODULE" CACHE STRING "DMOD build mode")
@@ -44,14 +44,16 @@ dmod_setup_external_module()
 # too big for a microcontroller's flash, so they are a package of their own
 # (carhmi_view) that goes where the view should be - the SD card.
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/carhmi_page.cmake)
-set(CARHMI_SCREEN           480x272 CACHE STRING "Size of the display the page is laid out for")
-carhmi_convert_page(
-    ${CMAKE_CURRENT_SOURCE_DIR}/assets/car_hmi.html
-    ${CARHMI_SCREEN}
-    hmi-screen                      # the element of the page that is the screen
-    carhmi
-    ${CMAKE_BINARY_DIR}/view-src
-)
+set(DMOD_ASSETS_SCREENS 480x272 320x240)
+foreach(SCREEN IN LISTS DMOD_ASSETS_SCREENS)
+    carhmi_convert_page(
+        ${CMAKE_CURRENT_SOURCE_DIR}/assets/car_hmi.html
+        ${SCREEN}
+        hmi-screen
+        carhmi
+        ${CMAKE_BINARY_DIR}/view-src/${SCREEN}
+    )
+endforeach()
 
 # ======================================================================
 #               carhmi_view - the view (data)
@@ -67,6 +69,13 @@ set(DMOD_MAL_IMPLS          )
 dmod_add_executable(${DMOD_MODULE_NAME} ${DMOD_MODULE_VERSION}
     src/carhmi_view.c
 )
+
+# Every normal/release build verifies the contents of the generated ZIP.
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+add_custom_target(check_carhmi_views ALL
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check_view_package.py ${CMAKE_BINARY_DIR}
+    DEPENDS carhmi_view
+    VERBATIM)
 
 # ======================================================================
 #               carhmi - the application (the service)
