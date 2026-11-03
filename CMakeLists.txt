@@ -15,7 +15,7 @@ include(FetchContent)
 FetchContent_Declare(
     dmod
     GIT_REPOSITORY https://github.com/choco-technologies/dmod.git
-    GIT_TAG        df64c1855dbbbe40d9f15e11a44a1f974cd8e565 # SDK screen variants
+    GIT_TAG        1ca8874425df01325bc7b1e85b59425a7fa01d61 # SDK screen variants
 )
 
 set(DMOD_MODE "DMOD_MODULE" CACHE STRING "DMOD build mode")
@@ -69,6 +69,14 @@ set(DMOD_MAL_IMPLS          )
 dmod_add_executable(${DMOD_MODULE_NAME} ${DMOD_MODULE_VERSION}
     src/carhmi_view.c
 )
+
+# Preserve the historical host-build path for tools that open the default view.
+# The package still contains only the separate, self-contained variant bundles.
+add_custom_target(carhmi_default_view ALL
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_BINARY_DIR}/views/480x272 ${CMAKE_BINARY_DIR}/views
+    DEPENDS carhmi_view
+    VERBATIM)
 
 # Every normal/release build verifies the contents of the generated ZIP.
 find_package(Python3 REQUIRED COMPONENTS Interpreter)

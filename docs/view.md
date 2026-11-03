@@ -44,3 +44,10 @@ entry `carhmi_view @screen 320x240`. Both install as `views/carhmi_view/carhmi.d
 with the selected bundle's fonts/images. There is no resolution-specific module
 name, registry entry or application argument. An explicit unsupported screen
 fails; without a selector the 480x272 default is installed.
+
+Screen IDs are opaque to the package manager: a named profile such as `epaper`
+can be selected without interpreting it as pixel dimensions. CarHMI currently
+provides the `480x272` and `320x240` profiles, while HTML layout still receives
+its actual viewport dimensions independently. The historical `build/views/`
+path mirrors the default 480x272 bundle for host tools; only the per-profile
+bundles are packaged.

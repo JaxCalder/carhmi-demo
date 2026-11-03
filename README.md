@@ -103,7 +103,9 @@ dmf-get install carhmi_view --screen 320x240 -t arch/armv7/cortex-m7 -y \
 
 Or select it in a board's `.dmd`: `carhmi_view @screen 320x240`. The installer
 copies only that bundle into `views/carhmi_view/`, so the application keeps the
-same path. 480x272 is the package default. An explicit unsupported resolution
+same path. Screen selectors are opaque, case-sensitive variant identifiers;
+for other interfaces names such as `epaper` or `epaper-mono` are valid too.
+480x272 is this package's default. An explicit unsupported resolution
 fails with the available choices. Older installers ignore the new `.dmr`
 attributes: upgrade `dmf-get` before installing a package with screen variants.
 
