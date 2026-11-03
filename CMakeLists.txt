@@ -15,7 +15,7 @@ include(FetchContent)
 FetchContent_Declare(
     dmod
     GIT_REPOSITORY https://github.com/choco-technologies/dmod.git
-    GIT_TAG        1ca8874425df01325bc7b1e85b59425a7fa01d61 # SDK screen variants
+    GIT_TAG        develop
 )
 
 set(DMOD_MODE "DMOD_MODULE" CACHE STRING "DMOD build mode")
