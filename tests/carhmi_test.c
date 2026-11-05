@@ -6,6 +6,7 @@
 #include "player.h"
 #include "playstate.h"
 #include "sfx.h"
+#include "fuel.h"
 #include "sfx_synth.h"
 #include "dmosi.h"
 #include <string.h>
@@ -559,4 +560,232 @@ DMOD_TEST_STEP(sfx_says_the_start_is_not_over_until_the_thread_has_made_it)
     sfx_free(s);
     sfx_free(NULL);
     DMOD_TEST_EXPECT(sfx_engine_started(NULL) && !sfx_engine_wanted(NULL));
+}
+
+DMOD_TEST_STEP(fuel_last_fifteen_minutes_and_clamps_at_empty)
+{
+    fuel_t f;
+    fuel_init(&f, 5000);
+    fuel_event(&f, "engine");
+    fuel_update(&f, 5000 + FUEL_RUN_MS / 2);
+    DMOD_TEST_EXPECT(fuel_level(&f) == 500);
+    fuel_update(&f, 5000 + FUEL_RUN_MS - 1);
+    DMOD_TEST_EXPECT(f.remaining_ms == 1);
+    fuel_update(&f, 5000 + FUEL_RUN_MS);
+    DMOD_TEST_EXPECT(fuel_level(&f) == 0);
+    fuel_update(&f, UINT64_MAX);
+    DMOD_TEST_EXPECT(f.remaining_ms == 0);
+}
+
+DMOD_TEST_STEP(fuel_requires_open_screen_cap_and_hose_then_stops_at_full)
+{
+    fuel_t f;
+    fuel_init(&f, 0);
+    fuel_event(&f, "engine");
+    fuel_update(&f, FUEL_RUN_MS);
+    fuel_event(&f, "fuel.filler");
+    DMOD_TEST_EXPECT(!f.visible && f.stage == FUEL_CAPPED);
+    fuel_event(&f, "fuel.open");
+    fuel_event(&f, "fuel.filler");
+    fuel_update(&f, FUEL_RUN_MS + 1000);
+    DMOD_TEST_EXPECT(f.stage == FUEL_OPEN && fuel_level(&f) == 0);
+    fuel_event(&f, "fuel.filler");
+    fuel_update(&f, FUEL_RUN_MS + 1000 + FUEL_FILL_MS / 2);
+    DMOD_TEST_EXPECT(f.stage == FUEL_PUMPING && fuel_level(&f) == 500);
+    fuel_update(&f, FUEL_RUN_MS + 1000 + FUEL_FILL_MS);
+    DMOD_TEST_EXPECT(f.stage == FUEL_FULL && fuel_level(&f) == 1000);
+    fuel_update(&f, FUEL_RUN_MS * 2);
+    DMOD_TEST_EXPECT(f.stage == FUEL_FULL && fuel_level(&f) == 1000);
+    fuel_event(&f, "fuel.close");
+    fuel_update(&f, FUEL_RUN_MS * 2 + 900);
+    DMOD_TEST_EXPECT(fuel_level(&f) == 1000);
+    fuel_event(&f, "engine");
+    fuel_update(&f, FUEL_RUN_MS * 2 + 1800);
+    DMOD_TEST_EXPECT(fuel_level(&f) == 999);
+}
+
+DMOD_TEST_STEP(fuel_can_interrupt_and_resume_without_resetting_the_level)
+{
+    fuel_t f;
+    fuel_init(&f, 100);
+    fuel_event(&f, "engine");
+    fuel_update(&f, 100 + FUEL_RUN_MS);
+    fuel_event(&f, "fuel.open");
+    fuel_event(&f, "fuel.filler");
+    fuel_event(&f, "fuel.filler");
+    fuel_update(&f, 100 + FUEL_RUN_MS + 10000);
+    fuel_event(&f, "fuel.close");
+    fuel_update(&f, 100 + FUEL_RUN_MS + 10900);
+    DMOD_TEST_EXPECT(f.stage == FUEL_CAPPED && fuel_level(&f) == 500);
+    fuel_event(&f, "fuel.open");
+    DMOD_TEST_EXPECT(f.stage == FUEL_CAPPED && fuel_level(&f) == 500);
+    fuel_event(&f, "fuel.filler"); fuel_event(&f, "fuel.filler");
+    fuel_event(&f, "fuel.filler");
+    DMOD_TEST_EXPECT(f.stage == FUEL_DISCONNECTED);
+    fuel_update(&f, 100 + FUEL_RUN_MS + 11800);
+    DMOD_TEST_EXPECT(fuel_level(&f) == 500);
+    fuel_event(&f, "fuel.filler"); /* Close the cap before reopening and reconnecting. */
+    DMOD_TEST_EXPECT(f.stage == FUEL_CAPPED);
+    fuel_event(&f, "fuel.filler"); fuel_event(&f, "fuel.filler");
+    fuel_update(&f, UINT64_MAX);
+    DMOD_TEST_EXPECT(f.stage == FUEL_FULL && fuel_level(&f) == 1000);
+    DMOD_TEST_EXPECT(!fuel_event(&f, "next"));
+}
+
+DMOD_TEST_STEP(sfx_pump_works_alone_and_fades_to_silence)
+{
+    sfx_synth_t s = sfx_synth_create();
+    int16_t* pcm = Dmod_Malloc(RATE * sizeof(int16_t));
+    DMOD_TEST_EXPECT(s != NULL && pcm != NULL);
+    if (s == NULL || pcm == NULL) { sfx_synth_destroy(s); Dmod_Free(pcm); return; }
+    sfx_synth_pump(s, true);
+    DMOD_TEST_EXPECT(sfx_synth_active(s));
+    DMOD_TEST_EXPECT(render(s, pcm, RATE) > 1000);
+    DMOD_TEST_EXPECT(sfx_synth_engine_mode(s) == SFX_ENGINE_OFF);
+    sfx_synth_pump(s, false);
+    sfx_synth_render(s, pcm, RATE);
+    DMOD_TEST_EXPECT(!sfx_synth_active(s) && render(s, pcm, RATE) == 0);
+    sfx_synth_pump(s, true);
+    DMOD_TEST_EXPECT(render(s, pcm, RATE) > 1000);
+    sfx_synth_pump(NULL, true);
+    sfx_pump_set(NULL, true);
+    sfx_synth_destroy(s); Dmod_Free(pcm);
+}
+
+DMOD_TEST_STEP(fuel_empty_stops_engine_and_prevents_restart_until_refuelled)
+{
+    fuel_t f;
+    fuel_init(&f, 0);
+    fuel_event(&f, "engine");
+    DMOD_TEST_EXPECT(f.engine_on);
+    fuel_update(&f, FUEL_RUN_MS);
+    DMOD_TEST_EXPECT(!f.engine_on && f.notice == FUEL_NOTICE_EMPTY);
+    fuel_event(&f, "engine");
+    DMOD_TEST_EXPECT(!f.engine_on && f.notice == FUEL_NOTICE_EMPTY);
+    fuel_event(&f, "fuel.open");
+    fuel_event(&f, "fuel.filler"); fuel_event(&f, "fuel.filler");
+    fuel_update(&f, FUEL_RUN_MS + 1000);
+    DMOD_TEST_EXPECT(fuel_level(&f) == 50 && f.notice == FUEL_NOTICE_NONE);
+    fuel_event(&f, "engine");
+    DMOD_TEST_EXPECT(!f.engine_on && f.notice == FUEL_NOTICE_HOSE_CONNECTED);
+    fuel_event(&f, "fuel.close");
+    fuel_event(&f, "engine");
+    DMOD_TEST_EXPECT(f.engine_on && f.notice == FUEL_NOTICE_NONE);
+}
+
+DMOD_TEST_STEP(fuel_cannot_fill_with_engine_on_or_start_with_hose_connected)
+{
+    fuel_t f;
+    fuel_init(&f, 0);
+    fuel_event(&f, "engine");
+    fuel_update(&f, FUEL_RUN_MS / 2);
+    fuel_event(&f, "fuel.open");
+    fuel_event(&f, "fuel.filler"); fuel_event(&f, "fuel.filler");
+    DMOD_TEST_EXPECT(f.stage == FUEL_CAPPED && f.notice == FUEL_NOTICE_ENGINE_RUNNING);
+    fuel_update(&f, FUEL_RUN_MS / 2 + 900);
+    DMOD_TEST_EXPECT(fuel_level(&f) == 499 && f.engine_on);
+    fuel_event(&f, "engine");
+    DMOD_TEST_EXPECT(!f.engine_on && f.notice == FUEL_NOTICE_NONE);
+    fuel_event(&f, "fuel.filler"); fuel_event(&f, "fuel.filler");
+    DMOD_TEST_EXPECT(f.stage == FUEL_PUMPING);
+    fuel_event(&f, "engine");
+    DMOD_TEST_EXPECT(!f.engine_on && f.stage == FUEL_PUMPING);
+    fuel_update(&f, FUEL_RUN_MS / 2 + 900 + FUEL_FILL_MS);
+    DMOD_TEST_EXPECT(f.stage == FUEL_FULL);
+    fuel_event(&f, "engine");
+    DMOD_TEST_EXPECT(!f.engine_on && f.notice == FUEL_NOTICE_HOSE_CONNECTED);
+    fuel_event(&f, "fuel.filler");
+    fuel_event(&f, "engine");
+    DMOD_TEST_EXPECT(f.engine_on && f.stage == FUEL_DISCONNECTED);
+    fuel_event(&f, "fuel.filler");
+    DMOD_TEST_EXPECT(f.stage == FUEL_CAPPED); /* Closing remains possible with the hose removed. */
+    fuel_event(&f, "fuel.filler");
+    DMOD_TEST_EXPECT(f.stage == FUEL_CAPPED && f.notice == FUEL_NOTICE_ENGINE_RUNNING);
+}
+
+DMOD_TEST_STEP(fuel_empty_engine_becomes_silent_and_cannot_crank)
+{
+    fuel_t f;
+    fuel_init(&f, 0);
+    fuel_event(&f, "engine");
+    sfx_synth_t s = sfx_synth_create();
+    int16_t* pcm = Dmod_Malloc(RATE * sizeof(int16_t));
+    DMOD_TEST_EXPECT(s != NULL && pcm != NULL);
+    if (s == NULL || pcm == NULL) { sfx_synth_destroy(s); Dmod_Free(pcm); return; }
+    sfx_synth_engine(s, f.engine_on);
+    for (int i = 0; i < 4; i++) sfx_synth_render(s, pcm, RATE);
+    DMOD_TEST_EXPECT(sfx_synth_engine_mode(s) == SFX_ENGINE_RUN);
+    fuel_update(&f, FUEL_RUN_MS);
+    sfx_synth_engine(s, f.engine_on);
+    for (int i = 0; i < 2; i++) sfx_synth_render(s, pcm, RATE);
+    DMOD_TEST_EXPECT(render(s, pcm, RATE) == 0 && !sfx_synth_active(s));
+    fuel_event(&f, "engine");
+    sfx_synth_engine(s, f.engine_on);
+    DMOD_TEST_EXPECT(f.notice == FUEL_NOTICE_EMPTY);
+    DMOD_TEST_EXPECT(render(s, pcm, RATE) == 0 && sfx_synth_engine_mode(s) == SFX_ENGINE_OFF);
+    sfx_synth_destroy(s); Dmod_Free(pcm);
+}
+
+DMOD_TEST_STEP(fuel_counts_only_engine_time_across_long_stops)
+{
+    fuel_t f;
+    fuel_init(&f, 0);
+    uint64_t now = FUEL_RUN_MS;
+    fuel_update(&f, now); /* Parked from startup. */
+    DMOD_TEST_EXPECT(f.remaining_ms == FUEL_RUN_MS && !f.engine_on);
+    fuel_event(&f, "engine");
+    fuel_update(&f, now += FUEL_RUN_MS / 2);
+    DMOD_TEST_EXPECT(fuel_level(&f) == 500 && f.engine_on);
+    fuel_event(&f, "engine");
+    fuel_update(&f, now += FUEL_RUN_MS * 3u);
+    DMOD_TEST_EXPECT(fuel_level(&f) == 500 && !f.engine_on);
+    fuel_event(&f, "fuel.open"); fuel_event(&f, "fuel.filler");
+    fuel_update(&f, now += FUEL_RUN_MS);
+    DMOD_TEST_EXPECT(fuel_level(&f) == 500 && f.stage == FUEL_OPEN);
+    fuel_event(&f, "fuel.close");
+    fuel_event(&f, "engine");
+    fuel_update(&f, now); /* Restart must not charge the time spent parked. */
+    DMOD_TEST_EXPECT(fuel_level(&f) == 500);
+    fuel_update(&f, now += FUEL_RUN_MS / 2 - 1);
+    DMOD_TEST_EXPECT(f.remaining_ms == 1 && f.engine_on);
+    fuel_update(&f, now + 1);
+    DMOD_TEST_EXPECT(f.remaining_ms == 0 && !f.engine_on);
+}
+
+DMOD_TEST_STEP(fuel_full_tank_disconnects_hose_then_closes_cap)
+{
+    fuel_t f;
+    fuel_init(&f, 0);
+    fuel_event(&f, "fuel.open");
+    fuel_event(&f, "fuel.filler"); fuel_event(&f, "fuel.filler");
+    DMOD_TEST_EXPECT(f.stage == FUEL_FULL);
+    fuel_event(&f, "fuel.filler");
+    DMOD_TEST_EXPECT(f.stage == FUEL_DISCONNECTED);
+    fuel_event(&f, "fuel.filler");
+    DMOD_TEST_EXPECT(f.stage == FUEL_CAPPED && fuel_level(&f) == 1000);
+}
+
+DMOD_TEST_STEP(fuel_engine_warning_flashes_four_times_then_disappears)
+{
+    fuel_t f;
+    fuel_init(&f, 0);
+    fuel_event(&f, "engine"); fuel_event(&f, "fuel.open");
+    DMOD_TEST_EXPECT(!fuel_warning_visible(&f));
+    fuel_event(&f, "fuel.filler");
+    DMOD_TEST_EXPECT(fuel_warning_visible(&f));
+    for (uint32_t half = 1; half <= FUEL_WARNING_FLASHES * 2u; half++)
+    {
+        fuel_update(&f, half * FUEL_WARNING_HALF_MS);
+        bool visible = half < FUEL_WARNING_FLASHES * 2u && half % 2u == 0;
+        DMOD_TEST_EXPECT(fuel_warning_visible(&f) == visible);
+        DMOD_TEST_EXPECT(f.stage == FUEL_CAPPED);
+    }
+    fuel_event(&f, "fuel.filler");
+    DMOD_TEST_EXPECT(fuel_warning_visible(&f)); /* Another attempt restarts it. */
+    fuel_event(&f, "engine");
+    DMOD_TEST_EXPECT(!fuel_warning_visible(&f));
+    fuel_event(&f, "engine"); fuel_event(&f, "fuel.filler");
+    DMOD_TEST_EXPECT(fuel_warning_visible(&f));
+    fuel_event(&f, "fuel.close");
+    DMOD_TEST_EXPECT(!fuel_warning_visible(&f));
 }

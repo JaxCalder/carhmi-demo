@@ -78,6 +78,28 @@ support. Until that renderer is released, build the matching dmview change and
 supply its local package manifest through `-DDMOD_DMM_URL=/path/to/manifest.dmm`.
 The HTML remains the design source; no generated DMV files need manual edits.
 
+## Fuel and refuelling
+
+The simulated tank starts full and drains in 15 minutes of engine running time,
+including while other pages are visible. Switching the engine off pauses consumption;
+restarting resumes from the remaining level. At empty, the engine stops; attempts
+to start it show a red empty-tank icon. Switch the engine off before refuelling:
+the filler stays closed while it is running, and tapping it shows a red crossed-out
+engine icon beside the filler. It flashes four times and disappears; another
+attempt repeats it. The instruction below the tank says to switch the engine off.
+Starting is also blocked while the hose is connected. Tap the fuel gauge on the
+dashboard or the fuel percentage in the top bar to open the tank.
+Tap the filler on the right once to open its cap, then again to insert the hose.
+The pump hums while the level rises (20 seconds from empty to full) and stops
+at full. After filling, tap once to remove the hose, then again to close the cap.
+The same sequence can interrupt filling early. Closing the screen with the ×
+button also disconnects and closes it; the fuel already added remains. The left
+menu stays visible; choosing another page closes the tank and stops the pump.
+The engine stays off until started explicitly. Restarting the application starts
+with a full tank.
+The HTML browser preview mirrors the interaction with local Web Audio;
+the device synthesizes the pump alongside the engine and music.
+
 ## Building
 
 ```bash

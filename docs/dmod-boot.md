@@ -87,3 +87,17 @@ transfer). carhmi reads the directory when it starts: restart it
 On a board with more flash, add `carhmi_view` to a *flash* `.dmd` instead: its
 views are embedded and mounted at `/eviews/carhmi_view/`, where carhmi looks
 first.
+
+## Fuel interaction check on the board
+
+Copy `test_navigation_input.dmfc` from the CarHMI build to the card's `bin/`.
+With the matching view installed, run:
+
+```text
+test_navigation_input /mnt/DMODOS/views/carhmi_view/carhmi.dmv --pump
+```
+
+Use the actual card mount path. The test exercises the navigation and fuel
+controls with synthetic contacts in an off-screen view, simulates consumption
+and filling without waiting 15 minutes, then plays two seconds of the pump
+through the board's real audio stream. Omit `--pump` for a silent check.

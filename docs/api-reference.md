@@ -131,10 +131,33 @@ of the cylinders is the clock), and written by a thread of its own
   (to 3800 rpm and back, the exhaust pops), a double blip, or a pull through three gears (to 6300 rpm, the
   ignition cut and a bang at every shift, the revs fall back for the next gear, at the end the throttle is
   lifted off and the exhaust crackles). `sfx_synth_maneuver()` starts one by hand.
+- **The fuel pump** combines a 105 Hz motor hum with filtered noise for flowing fuel. It plays only while
+  the hose is connected and the tank is filling, fading out when filling ends or is interrupted.
 - **The siren** is a wail: 640 - 1440 Hz and back in 3.4 s. It fades in and out in 50 ms.
 
 Nothing is kept: the engine is on at every start, the siren off. Without the audio device the buttons still
 switch, and there is nothing to hear.
+
+## Fuel and refuelling
+
+The simulated tank starts full and lasts 15 minutes of cumulative engine running
+time (`fuel.c`); stopping the engine pauses consumption. At empty, the engine
+stops and cannot restart until fuel is added. A restart attempt shows the red
+empty-tank appearance. Restarting carhmi itself resets the tank to full.
+
+The fuel percentage on the top bar and the dashboard gauge open the tank beside
+the sidebar. The filler cycles through closed cap, open cap, connected hose,
+disconnected hose, closed cap. Filling takes 20 seconds from empty; it stops at
+full or when the hose is removed. Clicking the filler removes the hose first,
+then closes the cap on the following click. Closing the panel or selecting a
+sidebar page also disconnects and closes it. Fuel already added remains.
+
+A running engine blocks opening/connecting the filler. Each blocked attempt
+starts four 300 ms on/off flashes of a crossed-out engine beside the filler,
+then the icon disappears. The application computes `fuel.warning` from elapsed
+uptime, so redraws do not restart the animation. Another attempt restarts it;
+closing the panel or stopping the engine cancels it. Starting the engine with
+the hose still connected is also blocked. The browser adapter mirrors the model.
 
 ## The channel
 
@@ -155,6 +178,10 @@ the scrolling needs dmview's SCROLLED, 0.12.1):
 | `volume` | carhmi | 0..100, the master volume (`data-dmod-width`, scale 100) |
 | `muted` | carhmi | 1 while the sound is off |
 | `headphones` | carhmi | 1: the device plays through the headphones (line out), 0: the speaker |
+| `fuel.level` | carhmi | 0..1000 of the tank; native height/Y binding fills it from the bottom |
+| `fuel.stage` | carhmi | 0: capped, 1: opened ready for hose, 2: pumping, 3: full with hose, 4: hose removed, ready to close |
+| `fuel.notice` | carhmi | 0: none, 1: empty tank, 2: running engine blocks filling, 3: connected hose blocks starting |
+| `fuel.warning` | carhmi | 1 during each visible flash of the temporary engine warning, otherwise 0 |
 | `engine`, `siren` | carhmi | 1: the sound is wanted (the engine starts or idles, the siren wails), 0: not |
 | `cover`, `rowN.cover` | carhmi | The image of the playing track, of a row: `<music>/.covers/<key>` (the view adds a size's end), else the view's own |
 | `cover.sizes`, `row0.cover.sizes` | the view | The ends of the files' names of the sizes it shows a cover at (todmvs) |
@@ -170,5 +197,8 @@ the scrolling needs dmview's SCROLLED, 0.12.1):
 | `volume` | 0..100 | Sets the volume (and turns the sound on) |
 | `mute` | - | Mutes, or turns the sound on |
 | `output` | - | Switches between the speaker and the headphones |
-| `engine` | - | Starts the engine, or lets it die down |
+| `fuel.open` | - | Opens the tank panel with the cap closed |
+| `fuel.close` | - | Disconnects the hose, closes the cap and panel, cancels the flashing warning |
+| `fuel.filler` | - | Opens cap / inserts hose / removes hose / closes cap; running engine blocks opening and filling |
+| `engine` | - | Starts or stops the engine; an empty tank or connected hose blocks starting |
 | `siren` | - | Switches the siren |

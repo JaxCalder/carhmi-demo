@@ -15,11 +15,85 @@
     const props = {};
     const listeners = {};
     const library = [];
+    let fuelRemaining = 900000;
+    let fuelUpdated = performance.now();
+    let fuelVisible = false;
+    let fuelStage = 0;
+    let engineOn = true;
+    let fuelNotice = 0;
+    let fuelWarningLeft = 0;
+    let pumpAudio = null;
+
+    // Local Web Audio pump; created only in response to a user gesture.
+    function pumpSound(on) {
+        if (!on) {
+            if (pumpAudio) {
+                const sound = pumpAudio;
+                pumpAudio = null;
+                sound.gain.gain.setTargetAtTime(0, sound.context.currentTime, 0.025);
+                setTimeout(() => sound.context.close(), 160);
+            }
+            return;
+        }
+        if (pumpAudio) return;
+        const Audio = window.AudioContext || window.webkitAudioContext;
+        if (!Audio) return;
+        try {
+            const context = new Audio();
+            const gain = context.createGain();
+            gain.gain.value = 0.12;
+            gain.connect(context.destination);
+            const motor = context.createOscillator();
+            motor.type = 'triangle'; motor.frequency.value = 105;
+            motor.connect(gain); motor.start();
+            const buffer = context.createBuffer(1, context.sampleRate, context.sampleRate);
+            const samples = buffer.getChannelData(0);
+            for (let i = 0; i < samples.length; i++) samples[i] = Math.random() * 2 - 1;
+            const flow = context.createBufferSource();
+            flow.buffer = buffer; flow.loop = true;
+            const filter = context.createBiquadFilter();
+            filter.type = 'lowpass'; filter.frequency.value = 700;
+            flow.connect(filter); filter.connect(gain); flow.start();
+            pumpAudio = { context, gain };
+            context.resume().catch(() => {});
+        } catch (_) { /* Refuelling stays usable without an audio device. */ }
+    }
+
+    function fuelUpdate() {
+        const now = performance.now();
+        const elapsed = Math.max(0, now - fuelUpdated);
+        fuelUpdated = now;
+        fuelWarningLeft = Math.max(0, fuelWarningLeft - elapsed);
+        if (fuelVisible && fuelStage === 2) {
+            fuelRemaining = Math.min(900000, fuelRemaining + elapsed * 45);
+            if (fuelRemaining >= 900000) { fuelStage = 3; pumpSound(false); }
+        } else if (engineOn) {
+            fuelRemaining = Math.max(0, fuelRemaining - elapsed);
+        }
+        if (fuelRemaining <= 0 && engineOn) { engineOn = false; fuelNotice = 1; }
+        if (fuelRemaining > 0 && fuelNotice === 1) fuelNotice = 0;
+        app('engine', engineOn ? 1 : 0);
+        app('fuel.notice', fuelNotice);
+        app('fuel.warning', fuelVisible && fuelNotice === 2 && fuelWarningLeft > 0 && Math.floor((2400 - fuelWarningLeft) / 300) % 2 === 0 ? 1 : 0);
+        app('fuel.level', Math.floor(fuelRemaining * 1000 / 900000));
+        app('fuel.stage', fuelStage);
+    }
+    setInterval(fuelUpdate, 100);
+    window.addEventListener('pagehide', () => pumpSound(false));
+
     let first = 0;                      /* The queue's window */
     let track = 0;                      /* Playing, of the library */
 
     function changed(name) {
         (listeners[name] || []).forEach(fn => fn());
+        if (name === 'fuel.level') {
+            const liquid = document.getElementById('fuel-liquid');
+            if (liquid) {
+                const height = Math.max(0, Math.min(1000, props[name] || 0)) * 118 / 1000;
+                liquid.style.height = height + 'px';
+                liquid.style.top = (118 - height) + 'px';
+            }
+        }
         /* data-dmod-width="name": as wide as the property says (data-dmod-scale: 1000) */
         document.querySelectorAll('[data-dmod-width="' + name + '"]').forEach(e => {
             const scale = parseInt(e.dataset.dmodScale || '1000', 10);
@@ -108,7 +182,30 @@
             (listeners[name] = listeners[name] || []).push(fn);
         },
         emit(name, value) {
-            if (name === 'toggle')
+            if (name === 'fuel.open' || name === 'fuel.close' || name === 'fuel.filler' || name === 'engine') {
+                fuelUpdate();
+                if (name === 'engine') {
+                    if (engineOn) { engineOn = false; fuelNotice = 0; fuelWarningLeft = 0; }
+                    else if (fuelRemaining <= 0) fuelNotice = 1;
+                    else if (fuelVisible && (fuelStage === 2 || fuelStage === 3)) fuelNotice = 3;
+                    else { engineOn = true; fuelNotice = 0; }
+                }
+                else if (name === 'fuel.open') { fuelVisible = true; fuelStage = 0; fuelWarningLeft = 0; }
+                else if (name === 'fuel.close') { fuelVisible = false; fuelStage = 0; fuelWarningLeft = 0; if (fuelNotice !== 1) fuelNotice = 0; }
+                else if (fuelVisible) {
+                    if (engineOn && (fuelStage === 0 || fuelStage === 1)) { fuelNotice = 2; fuelWarningLeft = 2400; }
+                    else {
+                        if (fuelNotice !== 1) fuelNotice = 0;
+                        if (fuelStage === 0) fuelStage = 1;
+                        else if (fuelStage === 1) fuelStage = fuelRemaining < 900000 ? 2 : 3;
+                        else if (fuelStage === 4) fuelStage = 0;
+                        else fuelStage = 4;
+                    }
+                }
+                pumpSound(fuelVisible && fuelStage === 2);
+                fuelUpdate();
+            }
+            else if (name === 'toggle')
                 app('playing', props['playing'] ? 0 : 1);
             else if (name === 'next')
                 play(track + 1);

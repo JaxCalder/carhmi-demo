@@ -13,6 +13,7 @@ dmod_add_test(${DMOD_MODULE_NAME} ${DMOD_MODULE_VERSION}
     ../src/player.c
     ../src/sfx_synth.c
     ../src/sfx.c
+    ../src/fuel.c
 )
 target_include_directories(${DMOD_MODULE_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
 
@@ -55,9 +56,10 @@ endif()
 
 # Off-screen integration test of the compiled navigation view and real contacts.
 set(DMOD_MODULE_NAME test_navigation_input)
-set(DMOD_STACK_SIZE 3072)
-dmod_add_executable(${DMOD_MODULE_NAME} ${PROJECT_VERSION} navigation_input.c)
-dmod_link_modules(${DMOD_MODULE_NAME} libdmview@>=0.15.1 dmdrvi)
+set(DMOD_STACK_SIZE 4096)
+dmod_add_executable(${DMOD_MODULE_NAME} ${PROJECT_VERSION} navigation_input.c ../src/fuel.c ../src/sfx_synth.c)
+target_include_directories(${DMOD_MODULE_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+dmod_link_modules(${DMOD_MODULE_NAME} libdmview@>=0.15.1 dmdrvi libdmaudio)
 
 if(DMF_GET_EXECUTABLE AND DMOD_LOADER_EXECUTABLE)
     set(NAVIGATION_MANIFEST_ARGS "")
@@ -66,7 +68,7 @@ if(DMF_GET_EXECUTABLE AND DMOD_LOADER_EXECUTABLE)
     endif()
     add_test(NAME test_navigation_dependencies
         COMMAND ${CMAKE_COMMAND} -E env DMOD_DMF_DIR=${DMOD_DMF_DIR}
-            ${DMF_GET_EXECUTABLE} install libdmview@>=0.15.1 -y ${NAVIGATION_MANIFEST_ARGS})
+            ${DMF_GET_EXECUTABLE} install -d ${DMOD_DMF_DIR}/test_navigation_input-local.dmd -y ${NAVIGATION_MANIFEST_ARGS})
     set_tests_properties(test_navigation_dependencies PROPERTIES FIXTURES_SETUP navigation)
     foreach(SCREEN IN ITEMS 480x272 320x240)
         add_test(NAME test_navigation_${SCREEN}
