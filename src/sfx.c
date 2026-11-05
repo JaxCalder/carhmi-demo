@@ -24,6 +24,7 @@ struct sfx
     /* Under `lock` */
     bool                want_engine;
     bool                want_siren;
+    bool                want_pump;
     bool                applied_engine; /* Said by the thread: the wish it has acted on ... */
     bool                starting;       /* ... and that the engine is cranking, catching, settling */
     bool                quit;
@@ -40,6 +41,7 @@ typedef struct
 {
     bool engine;
     bool siren;
+    bool pump;
     bool quit;
 } wishes_t;
 
@@ -48,6 +50,7 @@ static void take_wishes(sfx_t s, wishes_t* w)
     dmosi_mutex_lock(s->lock);
     w->engine = s->want_engine;
     w->siren = s->want_siren;
+    w->pump = s->want_pump;
     w->quit = s->quit;
     dmosi_mutex_unlock(s->lock);
 }
@@ -107,6 +110,7 @@ static void sfx_thread(void* arg)
     libdmaudio_stream_t stream = NULL;
     bool engine = false;
     bool siren = false;
+    bool pump = false;
 
     while (synth != NULL && pcm != NULL)
     {
@@ -118,6 +122,8 @@ static void sfx_thread(void* arg)
             sfx_synth_engine(synth, engine = w.engine);
         if (w.siren != siren)
             sfx_synth_siren(synth, siren = w.siren);
+        if (w.pump != pump)
+            sfx_synth_pump(synth, pump = w.pump);
         publish(s, synth, engine);
 
         if (!sfx_synth_active(synth))
@@ -219,6 +225,12 @@ void sfx_siren_set(sfx_t s, bool on)
 {
     if (valid(s))
         set_wish(s, &s->want_siren, on);
+}
+
+void sfx_pump_set(sfx_t s, bool on)
+{
+    if (valid(s))
+        set_wish(s, &s->want_pump, on);
 }
 
 static bool read_flag(sfx_t s, const bool* flag, bool when_invalid)

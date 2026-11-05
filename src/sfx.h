@@ -28,6 +28,9 @@ void sfx_engine_set(sfx_t s, bool on);
 /** @brief The siren: true wails until false */
 void sfx_siren_set(sfx_t s, bool on);
 
+/** Fuel pump: motor hum and flowing fuel until switched off. */
+void sfx_pump_set(sfx_t s, bool on);
+
 /** @brief What is wanted: the engine started (and not yet stopped) */
 bool sfx_engine_wanted(sfx_t s);
 bool sfx_siren_wanted(sfx_t s);

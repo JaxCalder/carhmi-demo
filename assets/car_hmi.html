@@ -123,6 +123,43 @@
             display: none;
         }
 
+        /* Refuelling is a separate overlay; changing individual parts keeps
+           the liquid and hose live in the compiled device view. */
+        .fuel-panel { position:absolute; top:24px; left:50px; width:430px; height:248px;
+            background:#020617; z-index:35; opacity:0; pointer-events:none; }
+        .fuel-panel.open { opacity:1; pointer-events:auto; }
+        .fuel-header { height:48px; padding:6px 16px; display:flex; align-items:center; justify-content:space-between; }
+        .fuel-header strong { font-size:16px; }
+        #fuel-close { width:36px; height:36px; border-radius:18px; background:#1e293b; color:#cbd5e1;
+            display:flex; align-items:center; justify-content:center; font-size:18px; }
+        .fuel-scene { position:relative; display:flex; gap:10px; padding:8px 20px; align-items:center; }
+        #fuel-tank { position:relative; width:206px; height:138px; border:2px solid #64748b;
+            border-radius:22px; background:#0f172a; flex-shrink:0; }
+        #fuel-well { position:absolute; left:8px; right:8px; top:8px; height:118px; overflow:hidden; border-radius:14px; }
+        #fuel-liquid { position:absolute; left:0; top:0; width:100%; height:118px; background:#f59e0b;
+            border-top:3px solid #fde68a; }
+        #fuel-tank-text { position:absolute; top:44px; left:0; width:100%; text-align:center;
+            font-size:28px; font-weight:800; color:white; text-shadow:0 2px 4px #020617; }
+        .fuel-mark { position:absolute; left:14px; width:14px; height:2px; background:#e2e8f0; }
+        #fuel-port { position:relative; width:174px; height:138px; flex-shrink:0; }
+        #fuel-filler { position:absolute; top:0; left:8px; width:100px; height:98px; border-radius:16px;
+            border:1px solid #475569; background:#1e293b; }
+        #fuel-cap, #fuel-mouth { position:absolute; top:9px; left:23px; width:52px; height:52px;
+            border-radius:26px; display:flex; align-items:center; justify-content:center; }
+        #fuel-cap { background:#94a3b8; border:4px solid #cbd5e1; color:#0f172a; }
+        #fuel-mouth { background:#020617; border:7px solid #64748b; opacity:0; }
+        #fuel-engine-blocked { position:absolute; top:16px; left:120px; width:48px; height:48px; opacity:0; pointer-events:none; }
+        #fuel-engine-blocked svg { display:block; width:100%; height:100%; }
+        #fuel-filler-label { position:absolute; bottom:9px; left:0; width:100%; font-size:10px; font-weight:700; text-align:center; }
+        #fuel-hose { position:absolute; top:25px; left:25px; width:96px; height:110px; opacity:0; pointer-events:none; }
+        #fuel-hint { margin-top:4px; text-align:center; color:#cbd5e1; font-size:12px; }
+        #fuel-note { margin-top:4px; text-align:center; color:#64748b; font-size:9px; }
+        #fuel-hint.warning { color:#f87171; }
+        #fuel-top.empty { color:#f87171; }
+        .engine-state { display:flex; }
+        #engine-on, #engine-empty { opacity:0; }
+        #fuel-gauge.low { border-color:#f59e0b; background:#78350f; }
+
         /* Compact display: reflow the same controls and scripts at build time.
            Use a 320 px browser viewport to preview this variant. */
         @media (max-width: 360px) {
@@ -141,7 +178,7 @@
             #nav-street { width:170px; font-size:9px; }
             #nav-status { display:none; }
             #view-home { padding:6px; gap:4px; }
-            #home-metrics > div { padding:4px; }
+            #home-metrics > * { padding:4px; }
             #view-home svg { width:118px; height:118px; }
             #speed-text { font-size:32px; }
             #home-gears { gap:8px; padding-left:8px; padding-right:8px; }
@@ -160,6 +197,18 @@
             #playlist-container .row-frame { width:24px; height:24px; }
             #playlist-container .row > div:last-child { display:none; }
             #view-climate { padding:4px; gap:4px; }
+            .fuel-panel { left:40px; width:280px; height:216px; }
+            .fuel-header { height:42px; padding:4px 10px; }
+            .fuel-header strong { font-size:14px; }
+            .fuel-scene { gap:10px; padding:4px 10px; }
+            #fuel-tank { width:110px; }
+            #fuel-port { width:140px; }
+            #fuel-filler { left:0; width:80px; }
+            #fuel-cap, #fuel-mouth { left:13px; }
+            #fuel-hose { left:16px; }
+            #fuel-engine-blocked { left:88px; width:44px; height:44px; }
+            #fuel-hint { margin-top:2px; font-size:10px; }
+            #fuel-note { display:none; }
             #climate-driver, #climate-passenger { width:56px; flex-shrink:0; }
             #climate-functions { gap:4px; }
             #climate-functions button { width:42px; }
@@ -184,6 +233,9 @@
                 <div class="flex items-center gap-1.5">
                     <i class="ph-fill ph-user text-slate-400 text-xs"></i> 
                     <span class="font-medium tracking-wide">Kierowca 1</span>
+                    <button id="fuel-top" aria-label="Stan paliwa i tankowanie" class="h-[24px] px-2 flex items-center gap-1 text-amber-300">
+                        <i class="ph-fill ph-gas-pump text-xs"></i><span id="fuel-top-text">100%</span>
+                    </button>
                 </div>
                 <div id="clock" class="font-bold text-[11px] tracking-widest text-white drop-shadow-md">--:--</div>
                 <div class="flex items-center gap-2">
@@ -250,12 +302,13 @@
                     
                     <!-- Lewa Kolumna: Zasięg i Bateria -->
                     <div id="home-metrics" class="w-1/4 flex flex-col gap-2 justify-center">
-                        <div class="bg-slate-800/60 rounded-xl p-2 text-center border border-slate-700/50 shadow-lg relative overflow-hidden">
-                            <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-green-500 to-green-300"></div>
+                        <button id="fuel-gauge" aria-label="Otwórz tankowanie" class="bg-slate-800/60 rounded-xl p-2 text-center border border-slate-700/50 shadow-lg relative overflow-hidden">
+                            <div data-dmod-width="fuel.level" data-dmod-value="1000" class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-green-500 to-green-300"></div>
                             <i class="ph-fill ph-gas-pump text-green-400 text-xl mb-0.5 drop-shadow-[0_0_5px_rgba(74,222,128,0.8)] mt-1"></i>
-                            <div class="text-[9px] text-slate-400 uppercase tracking-wider">Zasięg</div>
-                            <div class="text-sm font-bold text-white tracking-tight">342 km</div>
-                        </div>
+                            <div class="text-[9px] text-slate-400 uppercase tracking-wider">Paliwo</div>
+                            <div id="fuel-gauge-text" class="text-sm font-bold text-white tracking-tight">100%</div>
+                            <div class="text-[8px] text-slate-400">Tankuj</div>
+                        </button>
                         <div class="bg-slate-800/60 rounded-xl p-2 text-center border border-slate-700/50 shadow-lg relative overflow-hidden">
                             <div class="absolute top-0 left-0 w-[76%] h-1 bg-gradient-to-r from-sky-500 to-sky-300 shadow-[0_0_5px_rgba(56,189,248,0.8)]"></div>
                             <i class="ph-fill ph-lightning text-sky-400 text-xl mb-0.5 drop-shadow-[0_0_5px_rgba(56,189,248,0.8)] mt-1"></i>
@@ -750,14 +803,21 @@
                     <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-slate-800 to-slate-950 opacity-40 pointer-events-none"></div>
                     <div class="relative z-10 flex w-full h-full gap-2">
                         <button id="engine-btn" class="flex-1 h-full rounded-xl relative overflow-hidden active:scale-95 transition">
-                            <div class="sd-off absolute inset-0 flex flex-col items-center justify-center gap-2 bg-slate-800/70 rounded-xl border border-slate-700/80 shadow-lg">
+                            <div id="engine-empty" class="engine-state absolute inset-0 flex-col items-center justify-center gap-2 bg-red-950 rounded-xl border border-red-500/70">
+                                <div class="w-[88px] h-[88px] rounded-full bg-red-500/20 flex items-center justify-center">
+                                    <i class="ph-fill ph-gas-pump text-[48px] text-red-400"></i>
+                                </div>
+                                <span class="text-[14px] font-black tracking-widest text-red-400">BRAK PALIWA</span>
+                                <span class="text-[9px] font-bold tracking-widest text-red-300">ZATANKUJ</span>
+                            </div>
+                            <div id="engine-off" class="engine-state absolute inset-0 flex flex-col items-center justify-center gap-2 bg-slate-800/70 rounded-xl border border-slate-700/80 shadow-lg">
                                 <div class="w-[88px] h-[88px] rounded-full bg-slate-700/60 flex items-center justify-center">
                                     <i class="ph-fill ph-engine text-[48px] text-slate-400"></i>
                                 </div>
                                 <span class="text-[14px] font-black tracking-widest text-slate-200">SILNIK</span>
                                 <span class="text-[9px] font-bold tracking-widest text-slate-500">WYŁĄCZONY</span>
                             </div>
-                            <div class="sd-on absolute inset-0 flex-col items-center justify-center gap-2 bg-amber-500/10 rounded-xl border border-amber-500/60 shadow-lg">
+                            <div id="engine-on" class="engine-state absolute inset-0 flex-col items-center justify-center gap-2 bg-amber-500/10 rounded-xl border border-amber-500/60 shadow-lg">
                                 <div class="w-[88px] h-[88px] rounded-full bg-amber-500/20 flex items-center justify-center">
                                     <i class="ph-fill ph-engine text-[48px] text-amber-400"></i>
                                 </div>
@@ -784,6 +844,39 @@
                     </div>
                 </div>
 
+            </div>
+            <div id="fuel-panel" class="fuel-panel" role="dialog" aria-label="Tankowanie">
+                <div class="fuel-header"><strong>Tankowanie</strong><button id="fuel-close" aria-label="Zamknij tankowanie"><i class="ph-bold ph-x"></i></button></div>
+                <div class="fuel-scene">
+                    <div id="fuel-tank">
+                        <div id="fuel-well"><div id="fuel-liquid"></div></div>
+                        <div class="fuel-mark" style="top:36px"></div>
+                        <div class="fuel-mark" style="top:68px"></div>
+                        <div class="fuel-mark" style="top:100px"></div>
+                        <div id="fuel-tank-text">100%</div>
+                    </div>
+                    <div id="fuel-port">
+                        <button id="fuel-filler" aria-label="Otwórz wlew lub podłącz wąż">
+                            <span id="fuel-mouth"></span>
+                            <span id="fuel-cap"><i class="ph-fill ph-gas-pump text-xl"></i></span>
+                            <span id="fuel-filler-label">Otwórz wlew</span>
+                            <img id="fuel-hose" src="images/fuel-hose.svg" alt="Wąż podłączony do wlewu">
+                        </button>
+                        <div id="fuel-engine-blocked" role="img" aria-label="Wyłącz silnik przed tankowaniem">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+                              <circle cx="32" cy="32" r="29" fill="#450a0a" stroke="#f87171" stroke-width="3"/>
+                              <g fill="none" stroke="#fca5a5" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                              <path d="M20 22 H34 L39 27 H46 V41 H39 L34 46 H20 L15 40 H12 V28 H17 Z"/>
+                              <path d="M24 16 H33 M29 16 V22 M7 28 V39 M7 33 H12"/>
+                              </g>
+                              <path d="M12 12 L52 52" stroke="#450a0a" stroke-width="8"/>
+                              <path d="M12 12 L52 52" stroke="#f87171" stroke-width="4" stroke-linecap="round"/>
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+                <div id="fuel-hint">Kliknij wlew po prawej, aby go otworzyć</div>
+                <div id="fuel-note">Pełny bak: około 15 minut pracy silnika</div>
             </div>
         </div>
     </div>
@@ -1271,20 +1364,113 @@
             acBtn.classList.toggle('border-slate-700');
         });
 
+        // Fuel is owned by carhmi; the browser adapter mirrors its model.
+        dmod.prop('fuel.level', 1000);
+        dmod.prop('fuel.stage', 0);
+        dmod.prop('fuel.notice', 0);
+        dmod.prop('fuel.warning', 0);
+        dmod.prop('engine', 0);
+        const fuelPanel = document.getElementById('fuel-panel');
+        const fuelGauge = document.getElementById('fuel-gauge');
+        const fuelCap = document.getElementById('fuel-cap');
+        const fuelMouth = document.getElementById('fuel-mouth');
+        const fuelHose = document.getElementById('fuel-hose');
+        const fuelFillerLabel = document.getElementById('fuel-filler-label');
+        const fuelEngineBlocked = document.getElementById('fuel-engine-blocked');
+        const fuelHint = document.getElementById('fuel-hint');
+        const fuelTop = document.getElementById('fuel-top');
+        const engineBtn = document.getElementById('engine-btn');
+        function showFuel() {
+            const level = dmod.get('fuel.level');
+            const text = Math.floor(level / 10) + '%';
+            document.getElementById('fuel-top-text').innerText = text;
+            document.getElementById('fuel-gauge-text').innerText = text;
+            document.getElementById('fuel-tank-text').innerText = text;
+            if (level <= 150) fuelGauge.classList.add('low'); else fuelGauge.classList.remove('low');
+            const notice = dmod.get('fuel.notice');
+            if (notice === 1) {
+                fuelTop.classList.add('empty');
+            } else {
+                fuelTop.classList.remove('empty');
+            }
+            fuelHint.classList.remove('warning');
+            if (dmod.get('fuel.warning') > 0) fuelEngineBlocked.style.opacity = '1';
+            else fuelEngineBlocked.style.opacity = '0';
+            const stage = dmod.get('fuel.stage');
+            if (stage === 0) {
+                fuelCap.style.opacity = '1'; fuelMouth.style.opacity = '0'; fuelHose.style.opacity = '0';
+                fuelFillerLabel.innerText = 'Otwórz wlew';
+                fuelHint.innerText = 'Kliknij wlew po prawej, aby go otworzyć';
+            } else if (stage === 1) {
+                fuelCap.style.opacity = '0'; fuelMouth.style.opacity = '1'; fuelHose.style.opacity = '0';
+                fuelFillerLabel.innerText = 'Podłącz wąż';
+                fuelHint.innerText = 'Kliknij wlew ponownie, aby włożyć wąż';
+            } else if (stage === 2) {
+                fuelCap.style.opacity = '0'; fuelMouth.style.opacity = '1'; fuelHose.style.opacity = '1';
+                fuelFillerLabel.innerText = 'Odłącz wąż';
+                fuelHint.innerText = 'Tankowanie… Kliknij wlew, aby przerwać';
+            } else if (stage === 3) {
+                fuelCap.style.opacity = '0'; fuelMouth.style.opacity = '1'; fuelHose.style.opacity = '1';
+                fuelFillerLabel.innerText = 'Odłącz wąż';
+                fuelHint.innerText = 'Pełny bak! Odłącz wąż, potem zamknij wlew';
+            } else {
+                fuelCap.style.opacity = '0'; fuelMouth.style.opacity = '1'; fuelHose.style.opacity = '0';
+                fuelFillerLabel.innerText = 'Zamknij wlew';
+                fuelHint.innerText = 'Kliknij wlew ponownie, aby zamknąć bak';
+            }
+            if (dmod.get('engine') > 0) {
+                fuelHint.innerText = 'Wyłącz silnik, aby zatankować';
+                fuelHint.classList.add('warning');
+            } else if (notice === 3) {
+                fuelHint.innerText = 'Odłącz wąż przed uruchomieniem silnika';
+                fuelHint.classList.add('warning');
+            }
+        }
+        function openFuel() {
+            fuelPanel.classList.add('open');
+            dmod.emit('fuel.open');
+        }
+        document.getElementById('fuel-top').addEventListener('click', openFuel);
+        fuelGauge.addEventListener('click', openFuel);
+        function closeFuel() {
+            fuelPanel.classList.remove('open');
+            dmod.emit('fuel.close');
+        }
+        document.getElementById('fuel-close').addEventListener('click', closeFuel);
+        navBtns.forEach(btn => btn.addEventListener('click', () => {
+            if (fuelPanel.classList.contains('open')) closeFuel();
+        }));
+        document.getElementById('fuel-filler').addEventListener('click', () => dmod.emit('fuel.filler'));
+        dmod.onchange('fuel.level', showFuel);
+        dmod.onchange('fuel.stage', showFuel);
+        dmod.onchange('fuel.notice', showFuel);
+        dmod.onchange('fuel.warning', showFuel);
+        dmod.onchange('engine', showFuel);
+        showFuel();
+
         // --- Dźwięki samochodu ---
         // carhmi ustawia `engine` i `siren` (1: słychać, 0: nie); przyciski tylko mówią, co zrobiono: engine, siren
         // (przełącz). Silnik odpala razem z carhmi, muzyka rusza, gdy zaskoczy i się ustabilizuje.
-        dmod.prop('engine', 0);
         dmod.prop('siren', 0);
-        const engineBtn = document.getElementById('engine-btn');
         const sirenBtn = document.getElementById('siren-btn');
+        const engineOff = document.getElementById('engine-off');
+        const engineOn = document.getElementById('engine-on');
+        const engineEmpty = document.getElementById('engine-empty');
 
         function showSounds() {
-            if (dmod.get('engine') > 0) engineBtn.classList.add('on'); else engineBtn.classList.remove('on');
+            // Separate opacity groups preserve all three appearances in the native view.
+            if (dmod.get('fuel.notice') === 1) {
+                engineOff.style.opacity = '0'; engineOn.style.opacity = '0'; engineEmpty.style.opacity = '1';
+            } else if (dmod.get('engine') > 0) {
+                engineOff.style.opacity = '0'; engineOn.style.opacity = '1'; engineEmpty.style.opacity = '0';
+            } else {
+                engineOff.style.opacity = '1'; engineOn.style.opacity = '0'; engineEmpty.style.opacity = '0';
+            }
             if (dmod.get('siren') > 0) sirenBtn.classList.add('on'); else sirenBtn.classList.remove('on');
         }
 
         dmod.onchange('engine', showSounds);
+        dmod.onchange('fuel.notice', showSounds);
         dmod.onchange('siren', showSounds);
         engineBtn.addEventListener('click', () => dmod.emit('engine'));
         sirenBtn.addEventListener('click', () => dmod.emit('siren'));

@@ -107,6 +107,10 @@ struct sfx_synth
     float               siren_t;
     float               siren_phase;
     float               siren_level;
+    bool                pump_on;
+    float               pump_level;
+    float               pump_phase;
+    float               pump_flow;
     uint32_t            rng;
 };
 
@@ -246,6 +250,11 @@ void sfx_synth_siren(sfx_synth_t s, bool on)
     s->siren_on = on;
 }
 
+void sfx_synth_pump(sfx_synth_t s, bool on)
+{
+    if (valid(s)) s->pump_on = on;
+}
+
 sfx_engine_mode_t sfx_synth_engine_mode(sfx_synth_t s)
 {
     return valid(s) ? s->mode : SFX_ENGINE_OFF;
@@ -253,7 +262,7 @@ sfx_engine_mode_t sfx_synth_engine_mode(sfx_synth_t s)
 
 bool sfx_synth_active(sfx_synth_t s)
 {
-    return valid(s) && (s->mode != SFX_ENGINE_OFF || s->siren_on || s->siren_level > 0.0f);
+    return valid(s) && (s->mode != SFX_ENGINE_OFF || s->siren_on || s->siren_level > 0.0f || s->pump_on || s->pump_level > 0.0f);
 }
 
 float sfx_synth_rpm(sfx_synth_t s)
@@ -596,6 +605,29 @@ static float siren_sample(sfx_synth_t s)
     return wave * (1.0f / 1.45f) * s->siren_level;
 }
 
+/* Electric motor harmonics under a low, irregular rush of flowing fuel. */
+static float pump_sample(sfx_synth_t s)
+{
+    float target = s->pump_on ? 1.0f : 0.0f;
+    if (s->pump_level < target)
+    {
+        s->pump_level += DT / 0.12f;
+        if (s->pump_level > target) s->pump_level = target;
+    }
+    else if (s->pump_level > target)
+    {
+        s->pump_level -= DT / 0.12f;
+        if (s->pump_level < target) s->pump_level = target;
+    }
+    if (s->pump_level <= 0.0f) return 0.0f;
+    s->pump_phase += 105.0f * DT;
+    if (s->pump_phase >= 1.0f) s->pump_phase -= 1.0f;
+    s->pump_flow += 0.13f * (noise(s) - s->pump_flow);
+    float p = s->pump_phase;
+    return s->pump_level * (0.42f * sfx_synth_sin(p) +
+        0.18f * sfx_synth_sin(3.0f * p) + 0.65f * s->pump_flow);
+}
+
 void sfx_synth_render(sfx_synth_t s, int16_t* out, uint32_t frames)
 {
     if (!valid(s))
@@ -605,7 +637,7 @@ void sfx_synth_render(sfx_synth_t s, int16_t* out, uint32_t frames)
     }
     for (uint32_t i = 0; i < frames; i++)
     {
-        float v = limit(engine_sample(s) * 0.9f + siren_sample(s) * 0.5f);
+        float v = limit(engine_sample(s) * 0.9f + siren_sample(s) * 0.5f + pump_sample(s) * 0.65f);
         out[i] = (int16_t)(v * 30000.0f);
     }
 }

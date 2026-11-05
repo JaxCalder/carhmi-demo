@@ -1,5 +1,8 @@
 #include "dmod.h"
 #include "libdmview.h"
+#include "fuel.h"
+#include "sfx_synth.h"
+#include "libdmaudio.h"
 #include <string.h>
 
 /* Run through the real renderer/input interpreter on host or board. This is
@@ -78,9 +81,96 @@ static void save_frame(const char* prefix, const char* page)
     Dmod_FileClose(file); Dmod_Free(row);
 }
 
+static void sync_fuel(uint32_t claim, const fuel_t* tank)
+{
+    libdmview_prop_set_int(claim, "fuel.stage", tank->stage);
+    libdmview_prop_set_int(claim, "fuel.level", fuel_level(tank));
+    libdmview_prop_set_int(claim, "fuel.notice", tank->notice);
+    libdmview_prop_set_int(claim, "fuel.warning", fuel_warning_visible(tank) ? 1 : 0);
+    libdmview_prop_set_int(claim, "engine", tank->engine_on ? 1 : 0);
+    libdmview_update(view, now_ms);
+    libdmview_render(view, &surface, NULL);
+    expect("fuel_engine_blocked_alpha", fuel_warning_visible(tank) ? 255 : 0);
+    bool empty = tank->notice == FUEL_NOTICE_EMPTY;
+    expect("engine_empty_alpha", empty ? 255 : 0);
+    expect("engine_on_alpha", !empty && tank->engine_on ? 255 : 0);
+    expect("engine_off_alpha", !empty && !tank->engine_on ? 255 : 0);
+    int32_t sounds = 0, panel = 0;
+    libdmview_get_int(view, "view_sounds_alpha", &sounds);
+    libdmview_get_int(view, "fuel_panel_alpha", &panel);
+    if (panel == 255 && fuel_warning_visible(tank))
+    {
+        int cx = surface.width == 320 ? 280 : 430;
+        int cy = surface.width == 320 ? 108 : 120;
+        int radius = surface.width == 320 ? 22 : 24;
+        int red = 0;
+        for (int y = cy - radius; y < cy + radius; y++)
+        {
+            const uint16_t* row = (const uint16_t*)((const uint8_t*)surface.pixels + y * surface.stride);
+            for (int x = cx - radius; x < cx + radius; x++)
+            {
+                uint16_t c = row[x];
+                int r = ((c >> 11) & 31) * 255 / 31;
+                int g = ((c >> 5) & 63) * 255 / 63;
+                int b = (c & 31) * 255 / 31;
+                if (r > 180 && g < 160 && b < 160) red++;
+            }
+        }
+        if (red < 150) { Dmod_Printf("FAIL crossed-out engine icon not drawn\n"); failures++; }
+    }
+    if (sounds == 255 && panel == 0)
+    {
+        /* Check the rendered icon, not just the application's engine property. */
+        int sidebar = surface.width == 320 ? 40 : 50;
+        int end = sidebar + (surface.width - sidebar) / 2 - 4;
+        int amber = 0, red = 0;
+        for (int y = 80; y < 180; y++)
+        {
+            const uint16_t* row = (const uint16_t*)((const uint8_t*)surface.pixels + y * surface.stride);
+            for (int x = sidebar + 8; x < end; x++)
+            {
+                uint16_t c = row[x];
+                int r = ((c >> 11) & 31) * 255 / 31;
+                int g = ((c >> 5) & 63) * 255 / 63;
+                int b = (c & 31) * 255 / 31;
+                if (r > 180 && g > 150 && g < 230 && b < 100) amber++;
+                if (r > 180 && g < 150 && b < 150) red++;
+            }
+        }
+        bool running = !empty && tank->engine_on;
+        if ((running && amber < 100) || (!running && amber != 0) || (empty && red < 100) || (!empty && red > 10))
+        {
+            Dmod_Printf("FAIL engine icon color: running=%d empty=%d amber=%d red=%d\n", running, empty, amber, red);
+            failures++;
+        }
+    }
+}
+
+/* Exercise emitted UI events against the same fuel model as carhmi. */
+static void fuel_action(uint32_t claim, fuel_t* tank, const char* wanted)
+{
+    libdmview_event_t event;
+    int rc = libdmview_wait_event(claim, &event, 0);
+    if (rc != 0 || strcmp(event.name, wanted) != 0)
+    {
+        Dmod_Printf("FAIL fuel event: rc=%d actual=%s wanted=%s\n", rc, rc == 0 ? event.name : "none", wanted);
+        failures++;
+        return;
+    }
+    fuel_event(tank, event.name);
+    sync_fuel(claim, tank);
+    if (libdmview_wait_event(claim, &event, 0) == 0)
+    {
+        Dmod_Printf("FAIL duplicate fuel event: %s\n", event.name);
+        failures++;
+    }
+}
+
 int main(int argc, char** argv)
 {
     int status = 0;
+    bool play_pump = argc > 2 && strcmp(argv[2], "--pump") == 0;
+    const char* preview = argc > 2 && !play_pump ? argv[2] : NULL;
     const char* path = argc > 1 ? argv[1] : "/mnt/MEDIA/views/carhmi_view/carhmi.dmv";
     view = libdmview_open(path, &status);
     if (view == NULL)
@@ -105,7 +195,7 @@ int main(int argc, char** argv)
         libdmview_close(view); return 1;
     }
     libdmview_render(view, &surface, NULL);
-    if (argc > 2) save_frame(argv[2], "nav");
+    if (preview != NULL) save_frame(preview, "nav");
     expect("nav_map_near_x", compact ? -160 : -110);
     input(1, 140, 140, 0, 0);
     input(1, 170, 160, 0, 0);
@@ -155,9 +245,211 @@ int main(int argc, char** argv)
         char alpha[48];
         Dmod_SnPrintf(alpha, sizeof(alpha), "view_%s_alpha", pages[i]);
         expect(alpha, 255);
-        if (argc > 2) save_frame(argv[2], pages[i]);
+        if (preview != NULL) save_frame(preview, pages[i]);
     }
+    libdmview_display_t display = libdmview_display_register("carhmi_fuel_test");
+    uint32_t claim = 0;
+    if (display == NULL || libdmview_claim("carhmi_fuel_test", path, &claim) != 0 ||
+        libdmview_attach(view, display) != 0)
+    {
+        Dmod_Printf("FAIL fuel test display/claim\n"); failures++;
+    }
+    else
+    {
+        fuel_t tank;
+        fuel_init(&tank, 0);
+        fuel_event(&tank, "engine");
+        fuel_update(&tank, FUEL_RUN_MS * 65u / 100u);
+        fuel_event(&tank, "engine");
+        libdmview_prop_set_int(claim, "fuel.level", fuel_level(&tank));
+        libdmview_update(view, now_ms);
+        expect("fuel_liquid_h", 41); /* 35% of the 118px well, from the bottom */
+        click(112, 12); /* Fuel is reachable from any page via the top bar. */
+        fuel_action(claim, &tank, "fuel.open");
+        expect("fuel_panel_alpha", 255);
+        expect("fuel_cap_alpha", 255);
+        expect("fuel_hose_alpha", 0);
+        if (preview != NULL) save_frame(preview, "fuel-capped");
+        int filler_x = compact ? 210 : 344;
+        int filler_y = compact ? 100 : 112;
+        click(filler_x, filler_y);
+        fuel_action(claim, &tank, "fuel.filler");
+        expect("fuel_stage", FUEL_OPEN);
+        expect("fuel_cap_alpha", 0);
+        expect("fuel_mouth_alpha", 255);
+        expect("fuel_hose_alpha", 0);
+        if (preview != NULL) save_frame(preview, "fuel-open");
+        click(filler_x, filler_y);
+        fuel_action(claim, &tank, "fuel.filler");
+        expect("fuel_stage", FUEL_PUMPING);
+        expect("fuel_hose_alpha", 255);
+        if (preview != NULL) save_frame(preview, "fuel-pumping");
+        fuel_update(&tank, tank.updated_ms + 10000);
+        libdmview_prop_set_int(claim, "fuel.level", fuel_level(&tank));
+        libdmview_update(view, now_ms);
+        expect("fuel_liquid_h", 100); /* 85% */
+        libdmview_render(view, &surface, NULL);
+        if (preview != NULL) save_frame(preview, "fuel-filling");
+        fuel_update(&tank, tank.updated_ms + FUEL_FILL_MS);
+        libdmview_prop_set_int(claim, "fuel.level", fuel_level(&tank));
+        libdmview_update(view, now_ms);
+        libdmview_prop_set_int(claim, "fuel.stage", tank.stage);
+        libdmview_update(view, now_ms);
+        expect("fuel_stage", FUEL_FULL);
+        expect("fuel_liquid_h", 118);
+        click(filler_x, filler_y); fuel_action(claim, &tank, "fuel.filler");
+        expect("fuel_stage", FUEL_DISCONNECTED);
+        expect("fuel_hose_alpha", 0);
+        expect("fuel_mouth_alpha", 255);
+        expect("fuel_cap_alpha", 0);
+        if (preview != NULL) save_frame(preview, "fuel-disconnected");
+        click(filler_x, filler_y); fuel_action(claim, &tank, "fuel.filler");
+        expect("fuel_stage", FUEL_CAPPED);
+        expect("fuel_mouth_alpha", 0);
+        expect("fuel_cap_alpha", 255);
+        if (preview != NULL) save_frame(preview, "fuel-closed");
+        click(width - 32, 48);
+        fuel_action(claim, &tank, "fuel.close");
+        expect("fuel_panel_alpha", 0);
+        /* The dashboard gauge also opens the same overlay. */
+        click(20, compact ? 51 : 54);
+        now_ms += 1000; libdmview_update(view, now_ms);
+        libdmview_render(view, &surface, NULL);
+        expect("view_home_alpha", 255);
+        expect("view_sounds_alpha", 0);
+        click(85, compact ? 91 : 101);
+        fuel_action(claim, &tank, "fuel.open");
+        expect("fuel_panel_alpha", 255);
+        click(filler_x, filler_y); fuel_action(claim, &tank, "fuel.filler");
+        click(filler_x, filler_y); fuel_action(claim, &tank, "fuel.filler");
+        expect("fuel_stage", FUEL_FULL); /* Already full: pump stays off. */
+        click(width - 32, 48); fuel_action(claim, &tank, "fuel.close");
+        /* Switching pages remains possible with a connected hose. */
+        fuel_event(&tank, "engine");
+        fuel_update(&tank, tank.updated_ms + 90000);
+        fuel_event(&tank, "engine");
+        libdmview_prop_set_int(claim, "fuel.level", fuel_level(&tank));
+        libdmview_update(view, now_ms);
+        click(112, 12); fuel_action(claim, &tank, "fuel.open");
+        click(filler_x, filler_y); fuel_action(claim, &tank, "fuel.filler");
+        click(filler_x, filler_y); fuel_action(claim, &tank, "fuel.filler");
+        expect("fuel_stage", FUEL_PUMPING);
+        for (int page = 0; page < 5; page++)
+        {
+            click(20, compact ? 51 + page * 40 : 54 + page * 48);
+            fuel_action(claim, &tank, "fuel.close");
+            expect("fuel_panel_alpha", 0);
+            expect("fuel_stage", FUEL_CAPPED);
+            if (tank.visible) { Dmod_Printf("FAIL fuel still visible after navigation\n"); failures++; }
+            now_ms += 1000; libdmview_update(view, now_ms);
+            libdmview_render(view, &surface, NULL);
+            char alpha[48];
+            Dmod_SnPrintf(alpha, sizeof(alpha), "view_%s_alpha", pages[page]);
+            expect(alpha, 255);
+            if (page < 4) { click(112, 12); fuel_action(claim, &tank, "fuel.open"); }
+        }
+        /* Engine/fuel interlocks, driven by real compiled button clicks. */
+        int engine_x = compact ? 110 : 150;
+        click(engine_x, 140); fuel_action(claim, &tank, "engine");
+        expect("engine", 1);
+        if (preview != NULL) save_frame(preview, "engine-on");
+        click(engine_x, 140); fuel_action(claim, &tank, "engine");
+        expect("engine", 0);
+        if (preview != NULL) save_frame(preview, "engine-off");
+        uint32_t parked_fuel = tank.remaining_ms;
+        fuel_update(&tank, tank.updated_ms + FUEL_RUN_MS * 2u);
+        sync_fuel(claim, &tank);
+        if (tank.remaining_ms != parked_fuel)
+        {
+            Dmod_Printf("FAIL fuel consumed with engine off\n"); failures++;
+        }
+        click(engine_x, 140); fuel_action(claim, &tank, "engine");
+        expect("engine", 1);
+        fuel_update(&tank, tank.updated_ms + 9000);
+        sync_fuel(claim, &tank);
+        if (tank.remaining_ms != parked_fuel - 9000u)
+        {
+            Dmod_Printf("FAIL fuel consumption did not resume after restart\n"); failures++;
+        }
+        click(112, 12); fuel_action(claim, &tank, "fuel.open");
+        expect("fuel_engine_blocked_alpha", 0);
+        click(filler_x, filler_y); fuel_action(claim, &tank, "fuel.filler");
+        expect("fuel_engine_blocked_alpha", 255);
+        expect("fuel_cap_alpha", 255);
+        expect("fuel_stage", FUEL_CAPPED);
+        expect("fuel_notice", FUEL_NOTICE_ENGINE_RUNNING);
+        expect("fuel_hose_alpha", 0);
+        if (preview != NULL) save_frame(preview, "fuel-engine-running");
+        for (uint32_t half = 1; half <= FUEL_WARNING_FLASHES * 2u; half++)
+        {
+            fuel_update(&tank, tank.updated_ms + FUEL_WARNING_HALF_MS);
+            sync_fuel(claim, &tank);
+            expect("fuel_engine_blocked_alpha", half < FUEL_WARNING_FLASHES * 2u && half % 2u == 0 ? 255 : 0);
+            expect("fuel_cap_alpha", 255);
+        }
+        if (preview != NULL) save_frame(preview, "fuel-warning-finished");
+        click(filler_x, filler_y); fuel_action(claim, &tank, "fuel.filler");
+        expect("fuel_engine_blocked_alpha", 255);
+        expect("fuel_stage", FUEL_CAPPED);
+        click(width - 32, 48); fuel_action(claim, &tank, "fuel.close");
+        fuel_update(&tank, tank.updated_ms + FUEL_RUN_MS);
+        sync_fuel(claim, &tank);
+        expect("engine", 0);
+        click(engine_x, 140); fuel_action(claim, &tank, "engine");
+        expect("engine", 0);
+        expect("fuel_notice", FUEL_NOTICE_EMPTY);
+        expect("engine_empty_alpha", 255);
+        expect("fuel_top_empty", 1);
+        if (preview != NULL) save_frame(preview, "fuel-empty-engine");
+        click(112, 12); fuel_action(claim, &tank, "fuel.open");
+        click(filler_x, filler_y); fuel_action(claim, &tank, "fuel.filler");
+        click(filler_x, filler_y); fuel_action(claim, &tank, "fuel.filler");
+        expect("fuel_stage", FUEL_PUMPING);
+        fuel_update(&tank, tank.updated_ms + 1000);
+        sync_fuel(claim, &tank);
+        expect("fuel_notice", FUEL_NOTICE_NONE);
+        expect("engine_empty_alpha", 0);
+        expect("fuel_top_empty", 0);
+        click(width - 32, 48); fuel_action(claim, &tank, "fuel.close");
+        click(engine_x, 140); fuel_action(claim, &tank, "engine");
+        expect("engine", 1);
+        libdmview_release(claim);
+    }
+    libdmview_display_unregister(display);
     libdmview_close(view); Dmod_Free(surface.pixels);
+    if (play_pump)
+    {
+        int before = failures;
+        libdmaudio_format_t format = { SFX_SYNTH_RATE_HZ, 1, DMDRVI_AUDIO_FORMAT_S16_LE };
+        libdmaudio_stream_options_t options = { 250, 100 };
+        libdmaudio_stream_t stream = libdmaudio_open(NULL, &format, &options, &status);
+        sfx_synth_t synth = sfx_synth_create();
+        int16_t pcm[441];
+        if (stream == NULL || synth == NULL)
+        {
+            Dmod_Printf("FAIL fuel audio open: %d\n", status); failures++;
+        }
+        else
+        {
+            sfx_synth_pump(synth, true);
+            for (int chunk = 0; chunk < 110; chunk++)
+            {
+                if (chunk == 100) sfx_synth_pump(synth, false);
+                sfx_synth_render(synth, pcm, 441);
+                uint32_t sent = 0;
+                while (sent < 441)
+                {
+                    int32_t written = libdmaudio_write(stream, pcm + sent, 441 - sent, 1000);
+                    if (written <= 0) { failures++; break; }
+                    sent += (uint32_t)written;
+                }
+                if (failures != before) break;
+            }
+            if (libdmaudio_drain(stream, 2000) != 0) failures++;
+        }
+        sfx_synth_destroy(synth); libdmaudio_close(stream);
+        Dmod_Printf("fuel pump audio: %s\n", failures == before ? "PASS" : "FAIL");
+    }
     Dmod_Printf("navigation_input %ux%u: %s (%d failures)\n", width, height, failures ? "FAIL" : "PASS", failures);
     return failures;
 }

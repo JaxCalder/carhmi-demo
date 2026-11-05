@@ -103,6 +103,7 @@ dmod_add_executable(${DMOD_MODULE_NAME} ${DMOD_MODULE_VERSION}
     src/covers.c
     src/playstate.c
     src/sfx.c
+    src/fuel.c
     src/sfx_synth.c
 )
 

@@ -9,6 +9,7 @@
 #include "covers.h"
 #include "playstate.h"
 #include "sfx.h"
+#include "fuel.h"
 #include <errno.h>
 #include <string.h>
 
@@ -31,7 +32,9 @@
  * output is the headphones / the line out, 0: the speaker), the events volume
  * (the new level), mute and output (switch the output). The sounds of the car (sfx.c): the engine is started with
  * carhmi - the music starts when it has caught and settled - and the properties engine and siren (1: heard, 0: not)
- * with the events of the same names, which switch them. And the album covers (covers.c): the properties cover
+ * with the events of the same names, which switch them. Fuel (fuel.c) drains only with the engine on;
+ * the fuel.* channel properties show the tank, refuelling steps and temporary engine warning.
+ * Empty fuel and a connected hose prevent starting the engine. And the album covers (covers.c): the properties cover
  * (the playing track's) and rowN.cover name the images the view shows - a
  * cover once it is made, else the view's own; what to make the view says
  * (cover.sizes, row0.cover.sizes); covers.done of covers.total tracks are
@@ -420,12 +423,10 @@ typedef struct
     int32_t siren;
 } sfx_shown_t;
 
-/* The view's engine and siren buttons; true: it was one of them */
+/* Fuel owns the engine interlocks; the siren is independent. */
 static bool handle_sfx(sfx_t sfx, const libdmview_event_t* ev)
 {
-    if (strcmp(ev->name, "engine") == 0)
-        sfx_engine_set(sfx, !sfx_engine_wanted(sfx));
-    else if (strcmp(ev->name, "siren") == 0)
+    if (strcmp(ev->name, "siren") == 0)
         sfx_siren_set(sfx, !sfx_siren_wanted(sfx));
     else
         return false;
@@ -433,9 +434,9 @@ static bool handle_sfx(sfx_t sfx, const libdmview_event_t* ev)
 }
 
 /* engine and siren (1: heard), set when they changed */
-static void show_sfx(uint32_t claim, sfx_t sfx, sfx_shown_t* shown)
+static void show_sfx(uint32_t claim, sfx_t sfx, bool engine_on, sfx_shown_t* shown)
 {
-    int32_t engine = sfx_engine_wanted(sfx) ? 1 : 0;
+    int32_t engine = engine_on ? 1 : 0;
     int32_t siren = sfx_siren_wanted(sfx) ? 1 : 0;
     if (engine != shown->engine)
         (void)libdmview_prop_set_int(claim, "engine", engine);
@@ -529,8 +530,13 @@ int main(int argc, char* argv[])
         {
             /* The engine is started first: the music begins when it has caught and settled */
             sfx_t sfx = sfx_new();
-            sfx_engine_set(sfx, true);
             sfx_shown_t sfx_shown = { -1, -1 };
+            fuel_t fuel;
+            fuel_init(&fuel, Dmod_GetUptime());
+            (void)fuel_event(&fuel, "engine");
+            sfx_engine_set(sfx, fuel.engine_on);
+            int32_t fuel_shown = -1, fuel_stage_shown = -1, fuel_notice_shown = -1, fuel_warning_shown = -1;
+            bool pump_shown = false;
             char dir[128];
             if (argc > 3 && argv[3][0] != '\0')
                 Dmod_SnPrintf(dir, sizeof(dir), "%s", argv[3]);
@@ -558,7 +564,23 @@ int main(int argc, char* argv[])
                 if (got == -ENOENT)
                     break;                      /* (the claim is gone - the display with it) */
                 show_clock(claim, &wall);
-                bool taken = false;
+                fuel_update(&fuel, Dmod_GetUptime());
+                bool taken = got == 0 && fuel_event(&fuel, ev.name);
+                if (sfx_engine_wanted(sfx) != fuel.engine_on)
+                    sfx_engine_set(sfx, fuel.engine_on);
+                int32_t level = fuel_level(&fuel);
+                if (level != fuel_shown)
+                    (void)libdmview_prop_set_int(claim, "fuel.level", fuel_shown = level);
+                if ((int32_t)fuel.stage != fuel_stage_shown)
+                    (void)libdmview_prop_set_int(claim, "fuel.stage", fuel_stage_shown = fuel.stage);
+                if ((int32_t)fuel.notice != fuel_notice_shown)
+                    (void)libdmview_prop_set_int(claim, "fuel.notice", fuel_notice_shown = fuel.notice);
+                int32_t warning = fuel_warning_visible(&fuel) ? 1 : 0;
+                if (warning != fuel_warning_shown)
+                    (void)libdmview_prop_set_int(claim, "fuel.warning", fuel_warning_shown = warning);
+                bool pumping = fuel.visible && fuel.stage == FUEL_PUMPING;
+                if (pumping != pump_shown)
+                    sfx_pump_set(sfx, pump_shown = pumping);
                 if (!music_started && p != NULL && (sfx_engine_started(sfx) || Dmod_GetUptime() - began >= MUSIC_WAIT_MS))
                 {
                     start_music(p, resume);
@@ -566,8 +588,8 @@ int main(int argc, char* argv[])
                 }
                 if (sfx != NULL)
                 {
-                    taken = got == 0 && handle_sfx(sfx, &ev);
-                    show_sfx(claim, sfx, &sfx_shown);
+                    taken = taken || (got == 0 && handle_sfx(sfx, &ev));
+                    show_sfx(claim, sfx, fuel.engine_on, &sfx_shown);
                 }
                 if (volume != NULL)
                 {

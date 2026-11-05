@@ -7,7 +7,7 @@
 /*
  * The sounds of the car, made of nothing but arithmetic - no samples, no libm: a V8 sports engine (the starter
  * cranking it, the engine catching with a bark and settling to the idle, running - now and then it is revved, or
- * pulled through the gears -, shutting down) and a police siren (a wail).
+ * pulled through the gears -, shutting down), a police siren (a wail), and a fuel pump (motor and flowing fuel).
  * Mono, SFX_SYNTH_RATE_HZ, one sample at a time; the voices are mixed and limited here, so the stream gets what
  * the speaker can play. Nothing but its own context is touched, so it runs anywhere.
  */
@@ -28,13 +28,14 @@ typedef enum
 
 typedef struct sfx_synth* sfx_synth_t;
 
-/** @brief A synthesizer with both voices silent; NULL when out of memory */
+/** @brief A synthesizer with all voices silent; NULL when out of memory */
 sfx_synth_t sfx_synth_create(void);
 void sfx_synth_destroy(sfx_synth_t s);
 
 /** The engine: on starts it (when it is off), off lets it die down (when it is on) */
 void sfx_synth_engine(sfx_synth_t s, bool on);
 void sfx_synth_siren(sfx_synth_t s, bool on);
+void sfx_synth_pump(sfx_synth_t s, bool on);
 
 sfx_engine_mode_t sfx_synth_engine_mode(sfx_synth_t s);
 

@@ -10,9 +10,14 @@ assets/car_hmi.html ──(todmvs: dmvs_html + dmvs_js)──► carhmi.dmvs + f
 exist when dmod looks for assets). The element `hmi-screen` is the screen; the
 page is laid out twice, at 480x272 and 320x240. Compact CSS rearranges the
 same controls and scripts; `bind_navigation.py` derives map gesture geometry
-from each converted layout. dmod's assets step then makes
+from each converted layout. `bind_fuel.py` binds the tank well to native
+BOX height/Y operands so the fuel rises from the bottom. dmod's assets step then makes
 the view, the fonts (only the characters the view draws) and the images (at
 the sizes it draws them).
+
+The page requires `dmvs_js` and `dmvs_html` >= 0.4 and `dmvsi` and
+`libtodmvs` >= 0.8. Update cached tools in `CARHMI_TOOLS_DIR` together;
+older versions can silently omit properties or use incompatible document layouts.
 
 ## What the page may use
 
